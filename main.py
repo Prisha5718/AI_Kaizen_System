@@ -121,7 +121,7 @@ def submit_suggestion():
             }
             suggestion = create_suggestion(
                 {
-                    employee_id: employee_id,
+                    "employee_id": employee_id,
                     "employeeName": employee_name,
                     **processed,
                     "status": "Pending",
