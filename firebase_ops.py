@@ -1,3 +1,6 @@
+import os
+import json
+
 from datetime import datetime, timezone
 
 import firebase_admin
@@ -31,13 +34,20 @@ DEFAULT_USERS = [
     },
 ]
 
-
 def _get_client():
     if not firebase_admin._apps:
-        cred = credentials.Certificate(
-            "ai-kaizen-system-firebase-adminsdk-fbsvc-f9eca0d78a.json"
-        )
+        firebase_json = os.environ.get("FIREBASE_CREDENTIALS")
+
+        if firebase_json:
+            cred_dict = json.loads(firebase_json)
+            cred = credentials.Certificate(cred_dict)
+        else:
+            cred = credentials.Certificate(
+                "ai-kaizen-system-firebase-adminsdk-fbsvc-f9eca0d78a.json"
+            )
+
         firebase_admin.initialize_app(cred)
+
     return firestore.client()
 
 
