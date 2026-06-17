@@ -110,20 +110,23 @@ def submit_suggestion():
 
     try:
         if skip_transcribe:
-            file_debug('DEBUG: SKIP_TRANSCRIBE=1, skipping audio transcription and Firestore persistence')
-            print('DEBUG: SKIP_TRANSCRIBE=1, skipping audio transcription and Firestore persistence', flush=True)
-            suggestion = {
-                "id": "TEST-SUGGESTION",
-                "employeeId": employee_id,
-                "employeeName": employee_name,
+            file_debug('DEBUG: SKIP_TRANSCRIBE=1, creating test suggestion and saving to Firestore')
+            print('DEBUG: SKIP_TRANSCRIBE=1,creating test suggestion and saving to Firestore', flush=True)
+            processed = {
                 "originalText": "Test suggestion from audio",
                 "translatedText": "Test suggestion from audio",
                 "language": "English",
                 "category": "General Improvement",
                 "priority": "Low",
-                "status": "Pending",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
+            suggestion = create_suggestion(
+                {
+                    employee_id: employee_id,
+                    "employeeName": employee_name,
+                    **processed,
+                    "status": "Pending",
+                }
+            )
         else:
             file_debug('DEBUG: saving uploaded audio to temp file')
             print('DEBUG: saving uploaded audio to temp file', flush=True)
