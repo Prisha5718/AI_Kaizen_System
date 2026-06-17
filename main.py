@@ -153,21 +153,21 @@ def submit_suggestion():
 
         return json_response({"suggestion": suggestion})
     except Exception as exc:
-     import traceback
+        import traceback
 
-    error_text = traceback.format_exc()
+        error_text = traceback.format_exc()
 
-    print("========== ERROR ==========")
-    print(error_text)
-    print("===========================")
+        print("========== ERROR ==========")
+        print(error_text)
+        print("===========================")
 
-    return json_response(
-        {
-            "error": str(exc),
-            "traceback": error_text
+        return json_response(
+            {
+                "error": str(exc),
+                "traceback": error_text
         },
         500
-    )
+        )
 
 
 @app.route("/employee-suggestions/<employee_id>", methods=["GET"])
