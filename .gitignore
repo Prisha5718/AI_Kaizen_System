@@ -1,0 +1,8 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+debug_requests.log
+server.log
+
+ai-kaizen-system-firebase-adminsdk-fbsvc-f9eca0d78a.json
