@@ -1,6 +1,8 @@
-const API_BASE = window.location.origin && window.location.origin.includes(":5000")
-  ? window.location.origin
-  : "http://127.0.0.1:5000";
+const API_BASE =
+  window.location.hostname === "127.0.0.1" ||
+  window.location.hostname === "localhost"
+    ? "http://127.0.0.1:5000"
+    : "https://ai-kaizen-system.onrender.com";
 const appState = {
   user: null,
   loginRole: null,
