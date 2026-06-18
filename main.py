@@ -1,8 +1,10 @@
 import os
 import tempfile
+import traceback
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request
+from werkzeug.exceptions import HTTPException
 
 DEBUG_LOG_PATH = "debug_requests.log"
 
@@ -36,6 +38,18 @@ def json_response(payload, status=200):
     return response
 
 
+@app.errorhandler(Exception)
+def handle_unexpected_error(exc):
+    if isinstance(exc, HTTPException):
+        return json_response({"error": exc.description}, exc.code or 500)
+
+    error_text = traceback.format_exc()
+    print("========== ERROR ==========", flush=True)
+    print(error_text, flush=True)
+    print("===========================", flush=True)
+    return json_response({"error": str(exc), "traceback": error_text}, 500)
+
+
 @app.after_request
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -47,6 +61,11 @@ def add_cors_headers(response):
 @app.route("/")
 def index():
     return app.send_static_file("index.html")
+
+
+@app.route("/health")
+def health():
+    return json_response({"status": "ok"})
 
 
 @app.route("/login", methods=["POST", "OPTIONS"])
@@ -153,21 +172,25 @@ def submit_suggestion():
 
         return json_response({"suggestion": suggestion})
     except Exception as exc:
-        import traceback
-
         error_text = traceback.format_exc()
 
-        print("========== ERROR ==========")
-        print(error_text)
-        print("===========================")
+        print("========== ERROR ==========", flush=True)
+        print(error_text, flush=True)
+        print("===========================", flush=True)
 
         return json_response(
             {
                 "error": str(exc),
                 "traceback": error_text
-        },
+            },
         500
         )
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
 
 
 @app.route("/employee-suggestions/<employee_id>", methods=["GET"])
@@ -222,5 +245,5 @@ def suggestion(suggestion_id):
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)

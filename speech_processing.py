@@ -3,9 +3,7 @@ from priority_detector import detect_priority
 from translator_helper import normalize_text, translate_to_english
 import os
 
-# For faster local testing without heavy whisper dependencies, set SKIP_TRANSCRIBE=1
-# This will skip importing `speech_to_text` (which requires `whisper`/`torch`) and
-# return a simple placeholder transcription so the app endpoints remain testable.
+# For faster local testing without calling the Groq API, set SKIP_TRANSCRIBE=1.
 
 
 LANGUAGE_NAMES = {
@@ -19,7 +17,8 @@ LANGUAGE_NAMES = {
 
 
 def display_language(language_code):
-    return LANGUAGE_NAMES.get(language_code, language_code or "Unknown")
+    normalized = (language_code or "").lower()
+    return LANGUAGE_NAMES.get(normalized, language_code or "Unknown")
 
 
 def process_audio(audio_path):

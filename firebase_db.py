@@ -1,12 +1,18 @@
-import firebase_admin
-from firebase_admin import credentials, firestore
+import json
+import os
 from datetime import datetime
 
-cred = credentials.Certificate(
-    "ai-kaizen-system-firebase-adminsdk-fbsvc-f9eca0d78a.json"
-)
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 if not firebase_admin._apps:
+    firebase_json = os.environ.get("FIREBASE_CREDENTIALS")
+    if firebase_json:
+        cred = credentials.Certificate(json.loads(firebase_json))
+    else:
+        cred = credentials.Certificate(
+            "ai-kaizen-system-firebase-adminsdk-fbsvc-f9eca0d78a.json"
+        )
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()

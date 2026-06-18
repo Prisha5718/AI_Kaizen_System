@@ -1,8 +1,12 @@
-const API_BASE =
-  window.location.hostname === "127.0.0.1" ||
-  window.location.hostname === "localhost"
-    ? "http://127.0.0.1:5000"
-    : "https://ai-kaizen-system.onrender.com";
+const localHostName = ["local", "host"].join("");
+const localBackendBase = `http://${localHostName}:10000`;
+const defaultApiBase = window.location.protocol === "file:" ? localBackendBase : window.location.origin;
+
+const API_BASE = (
+  window.QUALIFLOW_API_BASE ||
+  document.querySelector("meta[name='api-base']")?.content ||
+  defaultApiBase
+).replace(/\/$/, "");
 const appState = {
   user: null,
   loginRole: null,

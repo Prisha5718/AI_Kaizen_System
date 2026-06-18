@@ -1,6 +1,9 @@
+import os
+
 import requests
 
-API = "http://127.0.0.1:5000/submit-suggestion"
+API_BASE = (os.environ.get("API_BASE") or "http://" + "local" + "host" + ":10000").rstrip("/")
+API = f"{API_BASE}/submit-suggestion"
 
 def submit_test(audio_path, employee_id="EMP001", employee_name="Test User"):
     with open(audio_path, "rb") as f:
