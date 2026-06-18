@@ -1,12 +1,4 @@
-const localHostName = ["local", "host"].join("");
-const localBackendBase = `http://${localHostName}:10000`;
-const defaultApiBase = window.location.protocol === "file:" ? localBackendBase : window.location.origin;
-
-const API_BASE = (
-  window.QUALIFLOW_API_BASE ||
-  document.querySelector("meta[name='api-base']")?.content ||
-  defaultApiBase
-).replace(/\/$/, "");
+const API_BASE = "https://aikaizensystem-production.up.railway.app";
 const appState = {
   user: null,
   loginRole: null,
