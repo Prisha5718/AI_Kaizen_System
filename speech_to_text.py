@@ -35,8 +35,10 @@ def run_with_bundled_ffmpeg(command, *args, **kwargs):
 
 def get_model():
     global model
+    print("Loading Whisper model...", flush=True)
     if model is None:
         model = whisper.load_model("tiny")
+        print("WHISPER MODEL LOADED", flush=True)
     return model
 
 
