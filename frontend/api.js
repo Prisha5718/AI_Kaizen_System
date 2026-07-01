@@ -1,4 +1,13 @@
-const API_BASE = "https://aikaizensystem-production.up.railway.app";
+const configuredApiBase = window.QUALIFLOW_API_BASE || "";
+const productionApiBase = "https://aikaizensystem-production.up.railway.app";
+
+const defaultApiBase =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1"
+        ? "http://127.0.0.1:8080"
+        : productionApiBase;
+
+const API_BASE = (configuredApiBase || defaultApiBase).replace(/\/$/, "");
 const appState = {
   user: null,
   loginRole: null,
@@ -25,7 +34,7 @@ async function request(path, options = {}) {
     return body;
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(`Cannot connect to the Flask backend at ${API_BASE}. Please make sure the server is running.`);
+      throw new Error(`Cannot connect to the Flask backend${API_BASE ? ` at ${API_BASE}` : ""}. Please make sure the server is running.`);
     }
     throw error;
   }
@@ -112,7 +121,7 @@ function stopDashboardAutoRefresh() {
 
 function renderStatusBadge(status) {
   if (status === "Implemented") {
-    return `<mark class="status-badge implemented-badge">✓ Implemented</mark>`;
+    return `<mark class="status-badge implemented-badge">Implemented</mark>`;
   }
   if (status === "Rejected") {
     return `<mark class="status-badge rejected-badge">Rejected</mark>`;
@@ -137,9 +146,26 @@ function createLoginModal() {
         <h2>Login</h2>
       </div>
       <label>
-        <span>User ID</span>
-        <input id="loginUserId" autocomplete="username" required />
-      </label>
+    <span>Company Name</span>
+
+    <input
+        id="loginCompany"
+        type="text"
+        placeholder="Enter Company Name"
+        autocomplete="organization"
+        required
+    />
+
+</label>
+    <span>User ID</span>
+
+    <input
+        id="loginUserId"
+        autocomplete="username"
+        required
+    />
+
+</label>
       <label>
         <span>Password</span>
         <input id="loginPassword" type="password" autocomplete="current-password" required />
@@ -161,6 +187,7 @@ function createLoginModal() {
 function openLogin(role) {
   appState.loginRole = role;
   document.querySelector("#loginRoleLabel").textContent = role === "manager" ? "Manager access" : "Employee access";
+  document.querySelector("#loginCompany").value = "";
   document.querySelector("#loginUserId").value = "";
   document.querySelector("#loginPassword").value = "";
   document.querySelector(".login-modal").classList.remove("is-hidden");
@@ -168,7 +195,7 @@ function openLogin(role) {
 }
 
 function resetSignupForm() {
-  ["signupEmployeeId", "signupEmployeeName", "signupPassword", "signupConfirmPassword"].forEach((id) => {
+  ["signupCompany","signupEmployeeId", "signupEmployeeName", "signupPassword", "signupConfirmPassword"].forEach((id) => {
     const field = document.querySelector(`#${id}`);
     if (field) field.value = "";
   });
@@ -180,15 +207,17 @@ function closeSignupModal() {
 
 async function handleSignup() {
   const button = document.querySelector("#createAccountBtn");
+  const company = document.querySelector("#signupCompany")?.value.trim() || "";
   const userId = document.querySelector("#signupEmployeeId")?.value.trim() || "";
   const name = document.querySelector("#signupEmployeeName")?.value.trim() || "";
   const password = document.querySelector("#signupPassword")?.value || "";
   const confirmPassword = document.querySelector("#signupConfirmPassword")?.value || "";
 
-  if (!userId || !name || !password || !confirmPassword) {
+  if (!company || !userId || !name || !password || !confirmPassword) {
     showToast("All fields are required", "error");
     return;
   }
+
   if (password !== confirmPassword) {
     showToast("Passwords do not match", "error");
     return;
@@ -199,7 +228,13 @@ async function handleSignup() {
     const result = await request("/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, name, password, confirmPassword })
+      body: JSON.stringify({
+        company,
+        userId,
+        name,
+        password,
+        confirmPassword
+      })
     });
     showOnly(document.querySelector("#landingView"));
     closeSignupModal();
@@ -214,23 +249,38 @@ async function handleSignup() {
 
 async function handleLogin(event) {
   event.preventDefault();
+
+  const company = document.querySelector("#loginCompany").value.trim();
+
+  if (!company) {
+    showToast("Please enter a company name", "error");
+    return;
+  }
+
   const button = document.querySelector("#loginSubmit");
-  setLoading(button, true, "Signing in...");
+
+  setLoading(button, true, "Signing in.");
   try {
     const { user } = await request("/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        company,
         userId: document.querySelector("#loginUserId").value.trim(),
         password: document.querySelector("#loginPassword").value
       })
     });
     if (user.role !== appState.loginRole) throw new Error(`This account is registered as ${user.role}`);
-    appState.user = user;
-    localStorage.setItem("qualiflow-user", JSON.stringify(user));
+    appState.user = {
+      company: user.company,
+      userId: user.userId,
+      name: user.name,
+      role: user.role
+    };
+    localStorage.setItem("qualiflow-user", JSON.stringify(appState.user));
     document.querySelector(".login-modal").classList.add("is-hidden");
-    await enterDashboard(user);
-    showToast(`Welcome ${getUserId(user)}`);
+    await enterDashboard(appState.user);
+    showToast(`Welcome ${appState.user.name || getUserId(appState.user)}`);
   } catch (error) {
     showToast(error.message, "error");
   } finally {
@@ -348,33 +398,35 @@ function stopRecording() {
 async function submitSuggestion(event) {
   event.preventDefault();
   if (!appState.user) return showToast("Please login first", "error");
+  if (!appState.user.company || !getUserId() || !appState.user.name) {
+    return showToast("Your login session is missing employee details. Please login again.", "error");
+  }
   if (!appState.audioBlob) return showToast("Record audio before submitting", "error");
   const button = event.currentTarget;
   const formData = new FormData();
+  formData.append("company", appState.user.company);
   formData.append("employeeId", getUserId());
   formData.append("employeeName", appState.user.name);
   formData.append("audio", appState.audioBlob, "suggestion.webm");
   setLoading(button, true, "Processing...");
 
-  console.log("Submitting for:", getUserId());
-  console.log("User object:", appState.user);
   try {
     const { suggestion } = await request("/submit-suggestion", { method: "POST", body: formData });
     renderEmployeeAnalysis(suggestion);
     appState.suggestions = [
-    suggestion,
-    ...appState.suggestions.filter(
+      suggestion,
+      ...appState.suggestions.filter(
         (item) => item.id !== suggestion.id
-    )
-];
+      )
+    ];
 
-renderEmployeeTable(appState.suggestions);
+    renderEmployeeTable(appState.suggestions);
 
-resetRecorderUI();
+    resetRecorderUI();
 
-setTimeout(async () => {
-    await loadEmployeeSuggestions();
-}, 1000);
+    setTimeout(async () => {
+      await loadEmployeeSuggestions();
+    }, 1000);
     window.localStorage.setItem("qualiflow-suggestions-updated", String(Date.now()));
     showToast("Suggestion submitted successfully");
   } catch (error) {
@@ -385,7 +437,6 @@ setTimeout(async () => {
 }
 
 function resetRecorderUI() {
-  // stop any running recorder and timer
   try {
     if (appState.recorder && appState.recorder.state !== "inactive") {
       try { appState.recorder.stop(); } catch (e) {}
@@ -393,7 +444,6 @@ function resetRecorderUI() {
     window.clearInterval(appState.timerId);
   } catch (e) {}
 
-  // revoke and clear audio url/blob
   if (appState.audioUrl) {
     try { URL.revokeObjectURL(appState.audioUrl); } catch (e) {}
   }
@@ -403,14 +453,12 @@ function resetRecorderUI() {
   appState.seconds = 0;
   appState.timerId = null;
 
-  // reset playback element and timer text/state
   const playback = document.querySelector("#recordingPlayback");
   if (playback) playback.removeAttribute("src");
   const timer = document.querySelector("#recordingTimer");
   if (timer) timer.textContent = "00:00";
   const stateLabel = document.querySelector("#recordingState");
   if (stateLabel) stateLabel.textContent = "Ready";
-  // ensure buttons are in ready state
   try { setRecorderState("Ready"); } catch (e) {}
 }
 
@@ -428,17 +476,17 @@ function renderEmployeeAnalysis(suggestion) {
 
 async function loadEmployeeSuggestions() {
   const employeeId = getUserId();
+  if (!appState.user?.company || !employeeId) {
+    throw new Error("Your login session is missing employee details. Please login again.");
+  }
 
-  console.log("Logged-in user:", appState.user);
-  console.log("getUserId():", employeeId);
+  const company = encodeURIComponent(appState.user.company);
 
-  const { suggestions } =
-    await request(`/employee-suggestions/${encodeURIComponent(employeeId)}`);
+  const { suggestions } = await request(
+    `/employee-suggestions/${company}/${encodeURIComponent(employeeId)}`
+);
 
-  console.log("Suggestions returned:", suggestions);
-
-  appState.suggestions =
-    suggestions.filter((item) => item.employeeId === employeeId);
+  appState.suggestions = suggestions;
 
   renderEmployeeTable(appState.suggestions);
 }
@@ -460,10 +508,25 @@ function renderEmployeeTable(suggestions) {
 }
 
 async function loadManagerDashboard() {
-  const [{ suggestions }, { analytics }] = await Promise.all([request("/all-suggestions"), request("/analytics")]);
-  appState.suggestions = suggestions;
-  renderManagerTable();
-  renderAnalytics(analytics);
+    if (!appState.user?.company) {
+      throw new Error("Your login session is missing company details. Please login again.");
+    }
+
+    const company = encodeURIComponent(appState.user.company);
+
+    const [{ suggestions }, { analytics }] = await Promise.all([
+
+        request(`/company-suggestions/${company}`),
+
+        request(`/analytics/${company}`)
+
+    ]);
+
+    appState.suggestions = suggestions;
+
+    renderManagerTable();
+
+    renderAnalytics(analytics);
 }
 
 function getFilteredSuggestions() {

@@ -1,16 +1,10 @@
+from email.mime import audio
 import os
 import tempfile
 import traceback
-from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
-
-DEBUG_LOG_PATH = "debug_requests.log"
-
-def file_debug(msg):
-    with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(msg + "\n")
 
 from analytics import build_analytics
 from authentication import login_user
@@ -19,8 +13,8 @@ from firebase_ops import (
     create_suggestion,
     delete_suggestion,
     get_suggestion,
+    list_company_suggestions,
     list_employee_suggestions,
-    list_suggestions,
     update_suggestion_status,
 )
 from speech_processing import process_audio
@@ -44,9 +38,7 @@ def handle_unexpected_error(exc):
         return json_response({"error": exc.description}, exc.code or 500)
 
     error_text = traceback.format_exc()
-    print("========== ERROR ==========", flush=True)
-    print(error_text, flush=True)
-    print("===========================", flush=True)
+    app.logger.exception("Unhandled exception")
     return json_response({"error": str(exc), "traceback": error_text}, 500)
 
 
@@ -74,9 +66,16 @@ def login():
         return json_response({})
 
     payload = request.get_json(silent=True) or {}
-    user = login_user(payload.get("userId"), payload.get("password"))
+    company = (payload.get("company") or "").strip()
+    user_id = (payload.get("userId") or "").strip()
+    password = payload.get("password") or ""
+
+    if not company or not user_id or not password:
+        return json_response({"error": "All fields are required"}, 400)
+
+    user = login_user(company, user_id, password)
     if not user:
-        return json_response({"error": "Invalid user ID or password"}, 401)
+        return json_response({"error": "Invalid company, user ID, or password"}, 401)
 
     return json_response({"user": user})
 
@@ -87,20 +86,21 @@ def signup():
         return json_response({})
 
     payload = request.get_json(silent=True) or {}
+    company = (payload.get("company") or "").strip()
     user_id = (payload.get("userId") or "").strip()
     name = (payload.get("name") or "").strip()
     password = payload.get("password") or ""
     confirm_password = payload.get("confirmPassword") or ""
 
-    if not user_id or not name or not password or not confirm_password:
+    if not company or not user_id or not name or not password or not confirm_password:
         return json_response({"error": "All fields are required"}, 400)
     if password != confirm_password:
         return json_response({"error": "Passwords do not match"}, 400)
 
     try:
-        user = create_employee_user(user_id, name, password)
+        user = create_employee_user(company, user_id, name, password)
     except ValueError as exc:
-        status = 409 if str(exc) == "Employee ID already exists" else 400
+        status = 409 if "already exists" in str(exc) else 400
         return json_response({"error": str(exc)}, status)
 
     return json_response({"user": user, "message": "Account created successfully. Please login."}, 201)
@@ -111,80 +111,45 @@ def submit_suggestion():
     if request.method == "OPTIONS":
         return json_response({})
 
+    company = request.form.get("company")
     employee_id = request.form.get("employeeId")
     employee_name = request.form.get("employeeName")
     audio = request.files.get("audio")
 
-    file_debug(f'DEBUG: submit_suggestion called; form keys={list(request.form.keys())}; files={list(request.files.keys())}')
-    print('DEBUG: submit_suggestion called; form keys=', list(request.form.keys()), 'files=', list(request.files.keys()), flush=True)
+    if not company or not employee_id or not employee_name:
+      return json_response({"error": "Employee details are required"}, 400)
 
-    if not employee_id or not employee_name:
-        return json_response({"error": "Employee details are required"}, 400)
     if not audio:
-        return json_response({"error": "Audio recording is required"}, 400)
+      return json_response({"error": "Audio recording is required"}, 400)
 
-    skip_transcribe = os.environ.get("SKIP_TRANSCRIBE") == "1"
     suffix = os.path.splitext(audio.filename or "")[1] or ".webm"
+
     temp_path = None
 
     try:
-        if skip_transcribe:
-            file_debug('DEBUG: SKIP_TRANSCRIBE=1, creating test suggestion and saving to Firestore')
-            print('DEBUG: SKIP_TRANSCRIBE=1,creating test suggestion and saving to Firestore', flush=True)
-            processed = {
-                "originalText": "Test suggestion from audio",
-                "translatedText": "Test suggestion from audio",
-                "language": "English",
-                "category": "General Improvement",
-                "priority": "Low",
-            }
-            suggestion = create_suggestion(
-                {
-                    "employeeId": employee_id,
-                    "employeeName": employee_name,
-                    **processed,
-                    "status": "Pending",
-                }
-            )
-        else:
-            file_debug('DEBUG: saving uploaded audio to temp file')
-            print('DEBUG: saving uploaded audio to temp file', flush=True)
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-                temp_path = temp_file.name
-                audio.save(temp_file)
-            file_debug(f'DEBUG: saved audio to {temp_path}')
-            print('DEBUG: saved audio to', temp_path, flush=True)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+            temp_path = temp_file.name
+            audio.save(temp_file)
 
-            file_debug('DEBUG: calling process_audio')
-            print('DEBUG: calling process_audio', flush=True)
-            processed = process_audio(temp_path)
-            file_debug('DEBUG: process_audio returned')
-            print('DEBUG: process_audio returned', flush=True)
+        print("Audio saved to:", temp_path)
+        processed = process_audio(temp_path)
+        print("Processed:", processed)
 
-            suggestion = create_suggestion(
-                {
-                    "employeeId": employee_id,
-                    "employeeName": employee_name,
-                    **processed,
-                    "status": "Pending",
-                }
-            )
+        payload = {
+            "company": company,
+            "employeeId": employee_id,
+            "employeeName": employee_name,
+            **processed,
+            "status": "Pending",
+        }
+        print("Payload:", payload)
+
+        suggestion = create_suggestion(payload)
 
         return json_response({"suggestion": suggestion})
     except Exception as exc:
-        error_text = traceback.format_exc()
-
-        print("========== ERROR ==========", flush=True)
-        print(error_text, flush=True)
-        print("===========================", flush=True)
-
-        return json_response(
-            {
-                "error": str(exc),
-                "traceback": error_text
-            },
-        500
-        )
+        app.logger.exception("Error processing suggestion")
+        return json_response({"error": str(exc)}, 500)
     finally:
         if temp_path and os.path.exists(temp_path):
             try:
@@ -193,14 +158,18 @@ def submit_suggestion():
                 pass
 
 
-@app.route("/employee-suggestions/<employee_id>", methods=["GET"])
-def employee_suggestions(employee_id):
-    return json_response({"suggestions": list_employee_suggestions(employee_id)})
+@app.route("/employee-suggestions/<company>/<employee_id>", methods=["GET"])
+def employee_suggestions(company, employee_id):
+    return json_response({
+        "suggestions": list_employee_suggestions(company, employee_id)
+    })
 
 
-@app.route("/all-suggestions", methods=["GET"])
-def all_suggestions():
-    return json_response({"suggestions": list_suggestions()})
+@app.route("/company-suggestions/<company>", methods=["GET"])
+def company_suggestions(company):
+    return json_response({
+        "suggestions": list_company_suggestions(company)
+    })
 
 
 @app.route("/update-status/<suggestion_id>", methods=["PUT", "OPTIONS"])
@@ -231,9 +200,11 @@ def delete_status(suggestion_id):
     return json_response({"deleted": True})
 
 
-@app.route("/analytics", methods=["GET"])
-def analytics():
-    return json_response({"analytics": build_analytics(list_suggestions())})
+@app.route("/analytics/<company>", methods=["GET"])
+def analytics(company):
+    return json_response({
+        "analytics": build_analytics(list_company_suggestions(company))
+    })
 
 
 @app.route("/suggestion/<suggestion_id>", methods=["GET"])

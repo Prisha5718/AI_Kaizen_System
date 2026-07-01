@@ -1,6 +1,5 @@
-import os
 import json
-
+import os
 from datetime import datetime, timezone
 
 import firebase_admin
@@ -9,30 +8,81 @@ from firebase_admin import credentials, firestore
 
 DEFAULT_USERS = [
     {
+        "company": "IFQM",
         "userId": "EMP001",
         "name": "Rahul Sharma",
         "password": "123456",
         "role": "employee",
     },
     {
+        "company": "IFQM",
         "userId": "EMP002",
         "name": "EMP002",
         "password": "123456",
         "role": "employee",
     },
     {
+        "company": "IFQM",
         "userId": "EMP003",
         "name": "EMP003",
         "password": "123456",
         "role": "employee",
     },
     {
+        "company": "IFQM",
         "userId": "MGR001",
         "name": "Admin User",
         "password": "admin123",
         "role": "manager",
     },
+    {
+        "company": "TCS",
+        "userId": "MGR001",
+        "name": "TCS Manager",
+        "password": "admin123",
+        "role": "manager",
+    },
+    {
+        "company": "Infosys",
+        "userId": "MGR001",
+        "name": "Infosys Manager",
+        "password": "admin123",
+        "role": "manager",
+    },
+    {
+        "company": "Wipro",
+        "userId": "MGR001",
+        "name": "Wipro Manager",
+        "password": "admin123",
+        "role": "manager",
+    },
 ]
+
+
+REQUIRED_SUGGESTION_FIELDS = (
+    "company",
+    "employeeId",
+    "employeeName",
+    "originalText",
+    "translatedText",
+    "category",
+    "priority",
+    "language",
+)
+
+
+def normalize_identifier(value):
+    return str(value or "").strip()
+
+
+def user_document_id(company, user_id):
+    normalized_company = normalize_identifier(company)
+    normalized_user_id = normalize_identifier(user_id)
+    if not normalized_company or not normalized_user_id:
+        raise ValueError("Company and user ID are required")
+    if "/" in normalized_company or "/" in normalized_user_id:
+        raise ValueError("Company and user ID cannot contain slashes")
+    return f"{normalized_company}_{normalized_user_id}"
 
 def _get_client():
     if not firebase_admin._apps:
@@ -69,17 +119,22 @@ def serialize_doc(doc):
 
 def seed_default_users():
     for user in DEFAULT_USERS:
-        ref = db.collection("users").document(user["userId"])
+        document_id = user_document_id(user["company"], user["userId"])
+        ref = db.collection("users").document(document_id)
         if not ref.get().exists:
             ref.set(user)
 
 
-def authenticate_user(user_id, password):
+def authenticate_user(company, user_id, password):
     seed_default_users()
-    if not user_id or not password:
+    if not company or not user_id or not password:
         return None
 
-    doc = db.collection("users").document(user_id).get()
+    normalized_company = normalize_identifier(company)
+    normalized_user_id = normalize_identifier(user_id)
+    document_id = user_document_id(normalized_company, normalized_user_id)
+
+    doc = db.collection("users").document(document_id).get()
     if not doc.exists:
         return None
 
@@ -88,23 +143,27 @@ def authenticate_user(user_id, password):
         return None
 
     return {
+        "company": user.get("company", normalized_company),
         "userId": user.get("userId", user_id),
         "name": user.get("name", ""),
         "role": user.get("role", ""),
     }
 
 
-def create_employee_user(user_id, name, password):
+def create_employee_user(company, user_id, name, password):
     seed_default_users()
-    if not user_id or not name or not password:
-        raise ValueError("Employee ID, employee name, and password are required")
+    if not company or not user_id or not name or not password:
+        raise ValueError("Company, employee ID, employee name, and password are required")
 
-    normalized_user_id = user_id.strip()
-    ref = db.collection("users").document(normalized_user_id)
+    normalized_company = normalize_identifier(company)
+    normalized_user_id = normalize_identifier(user_id)
+    document_id = user_document_id(normalized_company, normalized_user_id)
+    ref = db.collection("users").document(document_id)
     if ref.get().exists:
-        raise ValueError("Employee ID already exists")
+        raise ValueError("User already exists for this company")
 
     user = {
+        "company": normalized_company,
         "userId": normalized_user_id,
         "name": name.strip(),
         "password": password,
@@ -112,6 +171,7 @@ def create_employee_user(user_id, name, password):
     }
     ref.set(user)
     return {
+        "company": user["company"],
         "userId": user["userId"],
         "name": user["name"],
         "role": user["role"],
@@ -119,9 +179,14 @@ def create_employee_user(user_id, name, password):
 
 
 def create_suggestion(data):
+    missing = [field for field in REQUIRED_SUGGESTION_FIELDS if not data.get(field)]
+    if missing:
+        raise ValueError(f"Missing suggestion fields: {', '.join(missing)}")
+
     payload = {
-        "employeeId": data["employeeId"],
-        "employeeName": data["employeeName"],
+        "company": normalize_identifier(data["company"]),
+        "employeeId": normalize_identifier(data["employeeId"]),
+        "employeeName": normalize_identifier(data["employeeName"]),
         "originalText": data["originalText"],
         "translatedText": data["translatedText"],
         "category": data["category"],
@@ -141,17 +206,28 @@ def get_suggestion(suggestion_id):
     return serialize_doc(doc)
 
 
-def list_suggestions():
+def list_employee_suggestions(company, employee_id):
     docs = (
         db.collection("suggestions")
-        .order_by("timestamp", direction=firestore.Query.DESCENDING)
+        .where("company", "==", normalize_identifier(company))
+        .where("employeeId", "==", normalize_identifier(employee_id))
         .stream()
     )
-    return [serialize_doc(doc) for doc in docs]
+    suggestions = [serialize_doc(doc) for doc in docs]
 
+    return sorted(
+        suggestions,
+        key=lambda item: item.get("timestamp") or "",
+        reverse=True,
+    )
 
-def list_employee_suggestions(employee_id):
-    docs = db.collection("suggestions").where("employeeId", "==", employee_id).stream()
+def list_company_suggestions(company):
+    docs = (
+        db.collection("suggestions")
+        .where("company", "==", normalize_identifier(company))
+        .stream()
+    )
+
     suggestions = [serialize_doc(doc) for doc in docs]
     return sorted(
         suggestions,

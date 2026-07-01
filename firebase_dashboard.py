@@ -11,9 +11,9 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 
-def get_suggestions():
+def get_suggestions(company):
 
-    docs = db.collection("suggestions").stream()
+    docs = db.collection("suggestions").where("company", "==", company).stream()
 
     suggestions = []
 

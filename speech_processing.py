@@ -1,9 +1,8 @@
+import os
+
 from categorizer import categorize_suggestion
 from priority_detector import detect_priority
 from translator_helper import normalize_text, translate_to_english
-import os
-
-# For faster local testing without calling the Groq API, set SKIP_TRANSCRIBE=1.
 
 
 LANGUAGE_NAMES = {
@@ -23,9 +22,6 @@ def display_language(language_code):
 
 def process_audio(audio_path):
     skip = os.environ.get("SKIP_TRANSCRIBE")
-    with open('debug_requests.log', 'a', encoding='utf-8') as f:
-        f.write(f'DEBUG process_audio SKIP_TRANSCRIBE={skip}; audio_path={audio_path}\n')
-    print('DEBUG process_audio SKIP_TRANSCRIBE=', skip, 'audio_path=', audio_path, flush=True)
     if skip == "1":
         original_text = "Test suggestion from audio"
         language_code = "en"
