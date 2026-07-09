@@ -32,3 +32,16 @@ def translate_to_english(text):
     from deep_translator import GoogleTranslator
 
     return GoogleTranslator(source="auto", target="en").translate(text)
+
+
+def translate_from_english(text, target_language):
+    if not text:
+        return ""
+
+    target = (target_language or "en").lower()
+    if target == "en":
+        return text
+
+    from deep_translator import GoogleTranslator
+
+    return GoogleTranslator(source="en", target=target).translate(text)

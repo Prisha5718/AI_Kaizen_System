@@ -75,9 +75,17 @@ def normalize_identifier(value):
     return str(value or "").strip()
 
 
+def identifier_key(value):
+    return normalize_identifier(value).casefold()
+
+
+def identifiers_match(left, right):
+    return identifier_key(left) == identifier_key(right)
+
+
 def user_document_id(company, user_id):
-    normalized_company = normalize_identifier(company)
-    normalized_user_id = normalize_identifier(user_id)
+    normalized_company = identifier_key(company)
+    normalized_user_id = identifier_key(user_id)
     if not normalized_company or not normalized_user_id:
         raise ValueError("Company and user ID are required")
     if "/" in normalized_company or "/" in normalized_user_id:
@@ -114,6 +122,13 @@ def serialize_doc(doc):
     timestamp = data.get("timestamp")
     if hasattr(timestamp, "isoformat"):
         data["timestamp"] = timestamp.isoformat()
+    manager_updated_at = data.get("managerUpdatedAt")
+    if hasattr(manager_updated_at, "isoformat"):
+        data["managerUpdatedAt"] = manager_updated_at.isoformat()
+    data["approval"] = data.get("approval") or "Pending"
+    data["status"] = data.get("status") or "Pending"
+    data["feedback"] = data.get("feedback") or ""
+    data["rejectionReason"] = data.get("rejectionReason") or ""
     return data
 
 
@@ -130,11 +145,19 @@ def authenticate_user(company, user_id, password):
     if not company or not user_id or not password:
         return None
 
-    normalized_company = normalize_identifier(company)
-    normalized_user_id = normalize_identifier(user_id)
-    document_id = user_document_id(normalized_company, normalized_user_id)
+    document_id = user_document_id(company, user_id)
 
     doc = db.collection("users").document(document_id).get()
+    if not doc.exists:
+        doc = next(
+            (
+                candidate
+                for candidate in db.collection("users").stream()
+                if identifiers_match((candidate.to_dict() or {}).get("company"), company)
+                and identifiers_match((candidate.to_dict() or {}).get("userId"), user_id)
+            ),
+            doc,
+        )
     if not doc.exists:
         return None
 
@@ -143,7 +166,7 @@ def authenticate_user(company, user_id, password):
         return None
 
     return {
-        "company": user.get("company", normalized_company),
+        "company": user.get("company", normalize_identifier(company)),
         "userId": user.get("userId", user_id),
         "name": user.get("name", ""),
         "role": user.get("role", ""),
@@ -159,7 +182,12 @@ def create_employee_user(company, user_id, name, password):
     normalized_user_id = normalize_identifier(user_id)
     document_id = user_document_id(normalized_company, normalized_user_id)
     ref = db.collection("users").document(document_id)
-    if ref.get().exists:
+    duplicate_exists = ref.get().exists or any(
+        identifiers_match((candidate.to_dict() or {}).get("company"), normalized_company)
+        and identifiers_match((candidate.to_dict() or {}).get("userId"), normalized_user_id)
+        for candidate in db.collection("users").stream()
+    )
+    if duplicate_exists:
         raise ValueError("User already exists for this company")
 
     user = {
@@ -192,6 +220,9 @@ def create_suggestion(data):
         "category": data["category"],
         "priority": data["priority"],
         "status": data.get("status", "Pending"),
+        "approval": data.get("approval", "Pending"),
+        "feedback": data.get("feedback", ""),
+        "rejectionReason": data.get("rejectionReason", ""),
         "timestamp": datetime.now(timezone.utc),
         "language": data["language"],
     }
@@ -207,13 +238,13 @@ def get_suggestion(suggestion_id):
 
 
 def list_employee_suggestions(company, employee_id):
-    docs = (
-        db.collection("suggestions")
-        .where("company", "==", normalize_identifier(company))
-        .where("employeeId", "==", normalize_identifier(employee_id))
-        .stream()
-    )
-    suggestions = [serialize_doc(doc) for doc in docs]
+    docs = db.collection("suggestions").stream()
+    suggestions = [
+        serialize_doc(doc)
+        for doc in docs
+        if identifiers_match((doc.to_dict() or {}).get("company"), company)
+        and identifiers_match((doc.to_dict() or {}).get("employeeId"), employee_id)
+    ]
 
     return sorted(
         suggestions,
@@ -222,13 +253,12 @@ def list_employee_suggestions(company, employee_id):
     )
 
 def list_company_suggestions(company):
-    docs = (
-        db.collection("suggestions")
-        .where("company", "==", normalize_identifier(company))
-        .stream()
-    )
-
-    suggestions = [serialize_doc(doc) for doc in docs]
+    docs = db.collection("suggestions").stream()
+    suggestions = [
+        serialize_doc(doc)
+        for doc in docs
+        if identifiers_match((doc.to_dict() or {}).get("company"), company)
+    ]
     return sorted(
         suggestions,
         key=lambda item: item.get("timestamp") or "",
@@ -246,6 +276,38 @@ def update_suggestion_status(suggestion_id, status):
         return None
 
     ref.update({"status": status})
+    return get_suggestion(suggestion_id)
+
+
+def update_suggestion_review(suggestion_id, approval, status=None, feedback="", rejection_reason=""):
+    if approval not in {"Approved", "Rejected"}:
+        raise ValueError("Invalid approval decision")
+
+    update_data = {
+        "approval": approval,
+        "managerUpdatedAt": datetime.now(timezone.utc),
+    }
+
+    if approval == "Approved":
+        allowed_statuses = {"Pending", "In Review", "Implemented"}
+        if status not in allowed_statuses:
+            raise ValueError("Invalid status")
+        update_data.update({
+            "status": status,
+            "feedback": feedback or "",
+            "rejectionReason": "",
+        })
+    else:
+        update_data.update({
+            "rejectionReason": rejection_reason or "",
+            "feedback": "",
+        })
+
+    ref = db.collection("suggestions").document(suggestion_id)
+    if not ref.get().exists:
+        return None
+
+    ref.update(update_data)
     return get_suggestion(suggestion_id)
 
 

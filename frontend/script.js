@@ -4,7 +4,6 @@ const employeeDashboard = document.querySelector("#employeeDashboard");
 const managerLogin = document.querySelector("#managerLogin");
 const employeeLogin = document.querySelector("#employeeLogin");
 const backButtons = document.querySelectorAll("[data-view='landing']");
-const recordButton = document.querySelector("#recordButton");
 const recognizedText = document.querySelector("#recognizedText");
 const languageSelect = document.querySelector("#languageSelect");
 const exportReportButton = document.querySelector("#exportReportButton");
@@ -63,6 +62,7 @@ const translations = {
     Productivity: "उत्पादकता",
     "Cost Saving": "लागत बचत",
     Maintenance: "रखरखाव",
+    "General Improvement": "सामान्य सुधार",
     Priority: "प्राथमिकता",
     "All Priorities": "सभी प्राथमिकताएं",
     High: "उच्च",
@@ -174,6 +174,7 @@ const translations = {
     Productivity: "उत्पादकता",
     "Cost Saving": "खर्च बचत",
     Maintenance: "देखभाल",
+    "General Improvement": "सामान्य सुधारणा",
     Priority: "प्राधान्य",
     "All Priorities": "सर्व प्राधान्ये",
     High: "उच्च",
@@ -348,6 +349,7 @@ translations.ta = {
   Productivity: "உற்பத்தித்திறன்",
   "Cost Saving": "செலவு சேமிப்பு",
   Maintenance: "பராமரிப்பு",
+  "General Improvement": "பொது மேம்பாடு",
   Priority: "முன்னுரிமை",
   "All Priorities": "அனைத்து முன்னுரிமைகள்",
   High: "உயர்",
@@ -479,6 +481,7 @@ translations.te = {
   Productivity: "ఉత్పాదకత",
   "Cost Saving": "ఖర్చు ఆదా",
   Maintenance: "నిర్వహణ",
+  "General Improvement": "సాధారణ మెరుగుదల",
   Priority: "ప్రాధాన్యత",
   "All Priorities": "అన్ని ప్రాధాన్యతలు",
   High: "అధిక",
@@ -610,6 +613,7 @@ translations.gu = {
   Productivity: "ઉત્પાદકતા",
   "Cost Saving": "ખર્ચ બચત",
   Maintenance: "જાળવણી",
+  "General Improvement": "સામાન્ય સુધારો",
   Priority: "પ્રાથમિકતા",
   "All Priorities": "બધી પ્રાથમિકતાઓ",
   High: "ઉચ્ચ",
@@ -676,8 +680,153 @@ translations.gu = {
   "10 Jun, 12:10 PM": "10 જૂન, 12:10 PM"
 };
 
+const landingUiTranslations = {
+  hi: {
+    "Company Name": "कंपनी का नाम",
+    "COMPANY NAME": "कंपनी का नाम",
+    "Enter Company Name": "कंपनी का नाम दर्ज करें",
+    Login: "लॉगिन",
+    "Secure access": "सुरक्षित पहुंच",
+    "Manager access": "मैनेजर पहुंच",
+    "Employee access": "कर्मचारी पहुंच",
+    "Manager ID": "मैनेजर आईडी",
+    "All fields are required": "सभी फ़ील्ड आवश्यक हैं",
+    "Passwords do not match": "पासवर्ड मेल नहीं खाते",
+    "Please enter a company name": "कृपया कंपनी का नाम दर्ज करें",
+    "Account created successfully. Please login.": "खाता सफलतापूर्वक बनाया गया। कृपया लॉगिन करें।",
+    "Invalid company, user ID, or password": "कंपनी, यूज़र आईडी या पासवर्ड अमान्य है",
+    Welcome: "स्वागत है",
+    "Signing in.": "साइन इन हो रहा है।",
+    "Creating...": "बनाया जा रहा है...",
+    "Loading...": "लोड हो रहा है...",
+    "This account is registered as": "यह खाता इस रूप में पंजीकृत है"
+  },
+  mr: {
+    "Company Name": "कंपनीचे नाव",
+    "COMPANY NAME": "कंपनीचे नाव",
+    "Enter Company Name": "कंपनीचे नाव प्रविष्ट करा",
+    Login: "लॉगिन",
+    "Secure access": "सुरक्षित प्रवेश",
+    "Manager access": "मॅनेजर प्रवेश",
+    "Employee access": "कर्मचारी प्रवेश",
+    "Manager ID": "मॅनेजर आयडी",
+    "All fields are required": "सर्व फील्ड आवश्यक आहेत",
+    "Passwords do not match": "पासवर्ड जुळत नाहीत",
+    "Please enter a company name": "कृपया कंपनीचे नाव प्रविष्ट करा",
+    "Account created successfully. Please login.": "खाते यशस्वीरित्या तयार झाले. कृपया लॉगिन करा.",
+    "Invalid company, user ID, or password": "कंपनी, यूजर आयडी किंवा पासवर्ड अमान्य आहे",
+    Welcome: "स्वागत आहे",
+    "Signing in.": "साइन इन होत आहे.",
+    "Creating...": "तयार करत आहे...",
+    "Loading...": "लोड होत आहे...",
+    "This account is registered as": "हे खाते या भूमिकेत नोंदणीकृत आहे"
+  },
+  ta: {
+    "Company Name": "நிறுவன பெயர்",
+    "COMPANY NAME": "நிறுவன பெயர்",
+    "Enter Company Name": "நிறுவன பெயரை உள்ளிடவும்",
+    Login: "உள்நுழை",
+    "Secure access": "பாதுகாப்பான அணுகல்",
+    "Manager access": "மேலாளர் அணுகல்",
+    "Employee access": "ஊழியர் அணுகல்",
+    "Manager ID": "மேலாளர் ஐடி",
+    "All fields are required": "அனைத்து புலங்களும் அவசியம்",
+    "Passwords do not match": "கடவுச்சொற்கள் பொருந்தவில்லை",
+    "Please enter a company name": "நிறுவன பெயரை உள்ளிடவும்",
+    "Account created successfully. Please login.": "கணக்கு வெற்றிகரமாக உருவாக்கப்பட்டது. தயவுசெய்து உள்நுழைக.",
+    "Invalid company, user ID, or password": "நிறுவனம், பயனர் ஐடி அல்லது கடவுச்சொல் தவறானது",
+    Welcome: "வரவேற்கிறோம்",
+    "Signing in.": "உள்நுழைகிறது.",
+    "Creating...": "உருவாக்குகிறது...",
+    "Loading...": "ஏற்றுகிறது...",
+    "This account is registered as": "இந்த கணக்கு இந்த வகையில் பதிவு செய்யப்பட்டுள்ளது"
+  },
+  te: {
+    "Company Name": "కంపెనీ పేరు",
+    "COMPANY NAME": "కంపెనీ పేరు",
+    "Enter Company Name": "కంపెనీ పేరును నమోదు చేయండి",
+    Login: "లాగిన్",
+    "Secure access": "సురక్షిత ప్రవేశం",
+    "Manager access": "మేనేజర్ ప్రవేశం",
+    "Employee access": "ఉద్యోగి ప్రవేశం",
+    "Manager ID": "మేనేజర్ ఐడి",
+    "All fields are required": "అన్ని ఫీల్డులు అవసరం",
+    "Passwords do not match": "పాస్‌వర్డ్‌లు సరిపోలడం లేదు",
+    "Please enter a company name": "దయచేసి కంపెనీ పేరును నమోదు చేయండి",
+    "Account created successfully. Please login.": "ఖాతా విజయవంతంగా సృష్టించబడింది. దయచేసి లాగిన్ అవ్వండి.",
+    "Invalid company, user ID, or password": "కంపెనీ, యూజర్ ఐడి లేదా పాస్‌వర్డ్ చెల్లదు",
+    Welcome: "స్వాగతం",
+    "Signing in.": "సైన్ ఇన్ అవుతోంది.",
+    "Creating...": "సృష్టిస్తోంది...",
+    "Loading...": "లోడ్ అవుతోంది...",
+    "This account is registered as": "ఈ ఖాతా ఈ విధంగా నమోదు చేయబడింది"
+  },
+  gu: {
+    "Company Name": "કંપનીનું નામ",
+    "COMPANY NAME": "કંપનીનું નામ",
+    "Enter Company Name": "કંપનીનું નામ દાખલ કરો",
+    Login: "લૉગિન",
+    "Secure access": "સુરક્ષિત પ્રવેશ",
+    "Manager access": "મેનેજર પ્રવેશ",
+    "Employee access": "કર્મચારી પ્રવેશ",
+    "Manager ID": "મેનેજર આઈડી",
+    "All fields are required": "બધા ફીલ્ડ જરૂરી છે",
+    "Passwords do not match": "પાસવર્ડ મેળ ખાતા નથી",
+    "Please enter a company name": "કૃપા કરીને કંપનીનું નામ દાખલ કરો",
+    "Account created successfully. Please login.": "ખાતું સફળતાપૂર્વક બનાવાયું. કૃપા કરીને લૉગિન કરો.",
+    "Invalid company, user ID, or password": "કંપની, યુઝર આઈડી અથવા પાસવર્ડ અમાન્ય છે",
+    Welcome: "સ્વાગત છે",
+    "Signing in.": "સાઇન ઇન થઈ રહ્યું છે.",
+    "Creating...": "બનાવી રહ્યું છે...",
+    "Loading...": "લોડ થઈ રહ્યું છે...",
+    "This account is registered as": "આ ખાતું આ રીતે નોંધાયેલું છે"
+  }
+};
+
+Object.entries(landingUiTranslations).forEach(([language, names]) => {
+  Object.assign(translations[language], names);
+});
+
+const employeeDashboardDynamicTranslations = {
+  hi: {
+    Approval: "स्वीकृति",
+    Submitted: "सबमिट किया गया",
+    "Manager Feedback / Rejection Reason": "मैनेजर फीडबैक / अस्वीकृति कारण",
+    "Suggestion progress": "सुझाव प्रगति"
+  },
+  mr: {
+    Approval: "मंजुरी",
+    Submitted: "सबमिट केले",
+    "Manager Feedback / Rejection Reason": "मॅनेजर अभिप्राय / नकाराचे कारण",
+    "Suggestion progress": "सूचनेची प्रगती"
+  },
+  ta: {
+    Approval: "அங்கீகாரம்",
+    Submitted: "சமர்ப்பிக்கப்பட்டது",
+    "Manager Feedback / Rejection Reason": "மேலாளர் கருத்து / நிராகரிப்பு காரணம்",
+    "Suggestion progress": "பரிந்துரை முன்னேற்றம்"
+  },
+  te: {
+    Approval: "ఆమోదం",
+    Submitted: "సమర్పించబడింది",
+    "Manager Feedback / Rejection Reason": "మేనేజర్ అభిప్రాయం / తిరస్కరణ కారణం",
+    "Suggestion progress": "సూచన పురోగతి"
+  },
+  gu: {
+    Approval: "મંજૂરી",
+    Submitted: "સબમિટ કર્યું",
+    "Manager Feedback / Rejection Reason": "મેનેજર પ્રતિસાદ / નકારવાનું કારણ",
+    "Suggestion progress": "સૂચન પ્રગતિ"
+  }
+};
+
+Object.entries(employeeDashboardDynamicTranslations).forEach(([language, names]) => {
+  Object.assign(translations[language], names);
+});
+
 const textNodes = [];
 const translatableAttributes = ["placeholder", "aria-label"];
+let currentLanguage = "en";
 
 function normalizeI18nKey(value) {
   return value.replace(/\s+/g, " ").trim();
@@ -693,8 +842,8 @@ function preserveSpacing(original, translated) {
   return `${leading}${translated}${trailing}`;
 }
 
-function collectTextNodes() {
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+function collectTextNodes(root = document.body) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parentName = node.parentElement?.tagName;
       if (["SCRIPT", "STYLE"].includes(parentName)) {
@@ -706,22 +855,42 @@ function collectTextNodes() {
 
   while (walker.nextNode()) {
     const node = walker.currentNode;
-    node.i18nKey = normalizeI18nKey(node.nodeValue);
-    textNodes.push(node);
+    if (!node.i18nKey) {
+      node.i18nKey = normalizeI18nKey(node.nodeValue);
+    }
+    if (!textNodes.includes(node)) {
+      textNodes.push(node);
+    }
   }
 
-  document.querySelectorAll("[placeholder], [aria-label]").forEach((element) => {
+  const attributeSelector = translatableAttributes.map((attribute) => `[${attribute}]`).join(",");
+  const attributeElements = [
+    ...(root.matches?.(attributeSelector) ? [root] : []),
+    ...root.querySelectorAll(attributeSelector)
+  ];
+
+  attributeElements.forEach((element) => {
     translatableAttributes.forEach((attribute) => {
       const value = element.getAttribute(attribute);
       if (value) {
-        element.dataset[getDatasetI18nKey(attribute)] = normalizeI18nKey(value);
+        const datasetKey = getDatasetI18nKey(attribute);
+        if (!element.dataset[datasetKey]) {
+          element.dataset[datasetKey] = normalizeI18nKey(value);
+        }
       }
     });
   });
 }
 
+function translateAppText(value, language = currentLanguage) {
+  const key = normalizeI18nKey(String(value || ""));
+  const dictionary = translations[language] || {};
+  return language === "en" ? key : dictionary[key] || key;
+}
+
 function applyLanguage(language) {
   const dictionary = translations[language] || {};
+  currentLanguage = language;
   document.documentElement.lang = language;
 
   textNodes.forEach((node) => {
@@ -751,7 +920,25 @@ function applyLanguage(language) {
 }
 
 window.setAppLanguage = (language) => {
+  const previousLanguage = currentLanguage;
   applyLanguage(language);
+  if (language === previousLanguage) {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent("app-language-changed", {
+    detail: { language }
+  }));
+};
+
+window.translateAppText = translateAppText;
+window.getAppLanguage = () => currentLanguage;
+
+window.registerTranslatableContent = (root) => {
+  if (!root) {
+    return;
+  }
+  collectTextNodes(root);
+  applyLanguage(languageSelect?.value || currentLanguage);
 };
 
 function showView(view) {
@@ -902,21 +1089,6 @@ employeeLogin.addEventListener("click", () => showView(employeeDashboard));
 backButtons.forEach((button) => {
   button.addEventListener("click", () => showView(landingView));
 });
-
-if (recordButton) {
-  recordButton.addEventListener("click", () => {
-    recordButton.classList.toggle("is-recording");
-    const text = recordButton.classList.contains("is-recording")
-      ? "Listening for a voice suggestion..."
-      : "Machine number 4 has oil leakage near the operator path.";
-    recognizedText.textContent = text;
-    recognizedText.firstChild.i18nKey = normalizeI18nKey(text);
-    if (!textNodes.includes(recognizedText.firstChild)) {
-      textNodes.push(recognizedText.firstChild);
-    }
-    applyLanguage(languageSelect.value);
-  });
-}
 
 if (exportReportButton) {
   exportReportButton.addEventListener("click", downloadSuggestionsReport);

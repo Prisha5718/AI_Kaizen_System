@@ -13,27 +13,28 @@
     <link rel="stylesheet" href="styles.css?v=status-refresh-1" />
   </head>
   <body>
-    <div class="language-widget" aria-label="Language selector">
-      <span class="language-icon" aria-hidden="true">文A</span>
-      <select id="languageSelect" aria-label="Select language" onchange="window.setAppLanguage(this.value)">
-        <option value="en">English</option>
-        <option value="hi">Hindi</option>
-        <option value="mr">Marathi</option>
-        <option value="ta">Tamil</option>
-        <option value="te">Telugu</option>
-        <option value="gu">Gujarati</option>
-      </select>
-    </div>
 
     <main id="app">
       <section class="landing-view" id="landingView" aria-labelledby="landingTitle">
         <nav class="topbar" aria-label="Primary navigation">
           <div class="brand">
-    <img src="assets/logo.png" alt="IFQM Nexus Logo" class="brand-logo">
-</div>
-            </span>
+            <img src="assets/logo.png" alt="IFQM Nexus Logo" class="brand-logo">
           </div>
           <span class="system-pill">An Industry-Led Movement for Transformation</span>
+          <div class="language-widget landing-language-widget" aria-label="Language selector">
+            <span class="language-icon" aria-hidden="true">文A</span>
+            <select
+              id="languageSelectLanding"
+              onchange="window.setAppLanguage(this.value)"
+            >
+              <option value="en">English</option>
+              <option value="hi">Hindi</option>
+              <option value="mr">Marathi</option>
+              <option value="ta">Tamil</option>
+              <option value="te">Telugu</option>
+              <option value="gu">Gujarati</option>
+            </select>
+          </div>
         </nav>
 
         <div class="landing-grid">
@@ -72,11 +73,9 @@
           </div>
           <nav class="side-nav">
             <a class="is-active" href="#managerOverview">Overview</a>
-            <a href="#criticalSuggestions">Critical</a>
             <a href="#managerSuggestions">Suggestions</a>
-            <a href="#managerAnalytics">Analytics</a>
           </nav>
-          <button class="ghost-button" data-view="landing" type="button">Back</button>
+          <button class="ghost-button" data-view="landing" type="button">Logout</button>
         </aside>
 
         <div class="dashboard-shell" id="managerOverview">
@@ -198,11 +197,10 @@
                   <span role="columnheader">Suggestion</span>
                   <span role="columnheader">Category</span>
                   <span role="columnheader">Priority</span>
-                  <span role="columnheader">Status</span>
+                  <span role="columnheader">Decision</span>
                   <span role="columnheader">Timestamp</span>
-                  <span role="columnheader">Action</span>
                 </div>
-                <div class="table-row empty-row" role="row"><span role="cell">No suggestions submitted yet</span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+                <div class="table-row empty-row" role="row"><span role="cell">No suggestions submitted yet</span><span></span><span></span><span></span><span></span><span></span></div>
               </div>
             </article>
 
@@ -218,24 +216,7 @@
               </div>
             </article>
 
-            <article class="panel analytics-panel" id="managerAnalytics">
-              <div class="panel-heading">
-                <div>
-                  <h3>Category distribution</h3>
-                  <p>Improvement opportunities by theme.</p>
-                </div>
-              </div>
-              <div class="chart-layout">
-                <div class="donut category-donut" aria-label="Category donut chart"></div>
-                <div class="chart-legend">
-                  <span><i class="legend safety"></i>Safety 32%</span>
-                  <span><i class="legend quality"></i>Quality 24%</span>
-                  <span><i class="legend productivity"></i>Productivity 21%</span>
-                  <span><i class="legend saving"></i>Cost Saving 13%</span>
-                  <span><i class="legend maintenance"></i>Maintenance 10%</span>
-                </div>
-              </div>
-            </article>
+            
 
             <article class="panel analytics-panel">
               <div class="panel-heading">
@@ -264,16 +245,42 @@
             <a class="is-active" href="#employeeOverview">Submit</a>
             <a href="#employeeHistory">My Suggestions</a>
           </nav>
-          <button class="ghost-button" data-view="landing" type="button">Back</button>
+          <button class="ghost-button" data-view="landing" type="button">Logout</button>
         </aside>
 
         <div class="dashboard-shell" id="employeeOverview">
           <header class="dashboard-header">
-            <div>
-              <p class="eyebrow">Employee improvement workflow</p>
-              <h2>Submit a Kaizen suggestion</h2>
-            </div>
-          </header>
+  <div>
+    <p class="eyebrow">Improvement Initiative Portal</p>
+    <h2>Submit a Kaizen</h2>
+  </div>
+
+  <div class="dashboard-header-right">
+
+    <div class="welcome-user">
+        Welcome, 
+        <strong id="employeeWelcomeName">Employee</strong>
+    </div>
+
+    <div class="language-widget" aria-label="Language selector">
+        <span class="language-icon" aria-hidden="true">文A</span>
+
+        <select
+            id="languageSelect"
+            aria-label="Select language"
+            onchange="window.setAppLanguage(this.value)"
+        >
+            <option value="en">English</option>
+            <option value="hi">Hindi</option>
+            <option value="mr">Marathi</option>
+            <option value="ta">Tamil</option>
+            <option value="te">Telugu</option>
+            <option value="gu">Gujarati</option>
+        </select>
+    </div>
+
+</div>
+</header>
 
           <section class="employee-grid">
             <article class="panel workflow-panel">
@@ -283,7 +290,6 @@
                   <h3>Record Voice Suggestion</h3>
                   <p>Record your idea or issue using your voice.</p>
                 </div>
-                <button class="mic-button" id="recordButton" type="button" aria-label="Record voice suggestion"></button>
               </div>
               <div class="pipeline-step">
                 <span class="step-number">2</span>
@@ -324,10 +330,11 @@
                   <span>Suggestion</span>
                   <span>Category</span>
                   <span>Priority</span>
+                  <span>Approval</span>
                   <span>Status</span>
-                  <span>Date</span>
+                  <span>Manager Feedback / Rejection Reason</span>
                 </div>
-                <div class="mini-row empty-row"><span>No suggestions submitted yet</span><span></span><span></span><span></span><span></span></div>
+                <div class="mini-row empty-row"><span>No suggestions submitted yet</span><span></span><span></span><span></span><span></span><span></span></div>
               </div>
             </article>
           </section>

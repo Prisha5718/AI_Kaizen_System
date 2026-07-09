@@ -18,11 +18,16 @@ const appState = {
   audioUrl: null,
   timerId: null,
   seconds: 0,
-  suggestions: []
+  suggestions: [],
+  reviewSuggestion: null,
+  displayTranslationCache: new Map(),
+  employeeRenderToken: 0
 };
 
 const STATUS_OPTIONS = ["Pending", "In Review", "Implemented", "Rejected"];
 const EDITABLE_STATUS_OPTIONS = ["Pending", "In Review"];
+const REVIEW_STATUS_OPTIONS = ["Pending", "In Review", "Implemented"];
+const DECISION_OPTIONS = ["Select Decision", "Approve", "Reject"];
 const CATEGORY_OPTIONS = ["Safety", "Quality", "Productivity", "Maintenance", "Cost Saving"];
 const PRIORITY_OPTIONS = ["Critical", "High", "Medium", "Low"];
 
@@ -40,6 +45,86 @@ async function request(path, options = {}) {
   }
 }
 
+function translateUiText(value) {
+  return window.translateAppText ? window.translateAppText(value) : value;
+}
+
+async function translateDynamicTexts(texts, targetLanguage) {
+    if (!texts || texts.length === 0 || targetLanguage === "en") {
+        const result = {};
+        (texts || []).forEach(text => {
+            result[text] = text;
+        });
+        return result;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/translate-display`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                texts,
+                targetLanguage
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error("Translation request failed");
+        }
+
+        const data = await response.json();
+        return data.translations || {};
+    } catch (error) {
+        console.error("Translation Error:", error);
+
+        const fallback = {};
+        texts.forEach(text => {
+            fallback[text] = text;
+        });
+
+        return fallback;
+    }
+}
+
+function getSelectedLanguage() {
+  return window.getAppLanguage ? window.getAppLanguage() : document.documentElement.lang || "en";
+}
+
+function dynamicTranslationKey(language, value) {
+  return `${language}::${String(value || "").trim()}`;
+}
+
+function getCachedDisplayText(value, language = getSelectedLanguage()) {
+  const text = String(value || "").trim();
+  if (!text || text === "-") return text || "-";
+  if (language === "en") return text;
+  return appState.displayTranslationCache.get(dynamicTranslationKey(language, text)) || translateUiText(text);
+}
+
+async function loadDisplayTranslations(values, language = getSelectedLanguage()) {
+  if (language === "en") return false;
+
+  const texts = [...new Set(values
+    .map((value) => String(value || "").trim())
+    .filter((value) => value && value !== "-")
+  )].filter((value) => !appState.displayTranslationCache.has(dynamicTranslationKey(language, value)));
+
+  if (!texts.length) return false;
+
+  const { translations = {} } = await request("/translate-display", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ targetLanguage: language, texts })
+  });
+
+  Object.entries(translations).forEach(([source, translated]) => {
+    appState.displayTranslationCache.set(dynamicTranslationKey(language, source), translated || source);
+  });
+  return true;
+}
+
 function showToast(message, type = "success") {
   let toast = document.querySelector(".app-toast");
   if (!toast) {
@@ -47,7 +132,7 @@ function showToast(message, type = "success") {
     toast.className = "app-toast";
     document.body.appendChild(toast);
   }
-  toast.textContent = message;
+  toast.textContent = translateUiText(message);
   toast.dataset.type = type;
   toast.classList.add("is-visible");
   window.clearTimeout(toast.hideTimer);
@@ -58,7 +143,7 @@ function setLoading(element, isLoading, label = "Loading...") {
   if (!element) return;
   if (isLoading) {
     element.dataset.originalText = element.textContent;
-    element.textContent = label;
+    element.textContent = translateUiText(label);
     element.disabled = true;
   } else {
     element.textContent = element.dataset.originalText || element.textContent;
@@ -82,6 +167,16 @@ function formatDate(value) {
 
 function tagClass(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, "-");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[char]));
 }
 
 function getUserId(user = appState.user) {
@@ -120,13 +215,22 @@ function stopDashboardAutoRefresh() {
 }
 
 function renderStatusBadge(status) {
-  if (status === "Implemented") {
-    return `<mark class="status-badge implemented-badge">Implemented</mark>`;
+  const safeStatus = escapeHtml(
+    translateUiText(status || "-")
+);
+  if (status === "Implemented" || status === "Approved") {
+    return `<mark class="status-badge implemented-badge">${safeStatus}</mark>`;
   }
   if (status === "Rejected") {
-    return `<mark class="status-badge rejected-badge">Rejected</mark>`;
+    return `<mark class="status-badge rejected-badge">${safeStatus}</mark>`;
   }
-  return `<mark class="status-badge ${tagClass(status)}">${status || "-"}</mark>`;
+  if (status === "Pending") {
+    return `<mark class="status-badge pending-badge">${safeStatus}</mark>`;
+  }
+  if (status === "In Review") {
+    return `<mark class="status-badge review-badge">${safeStatus}</mark>`;
+  }
+  return `<mark class="status-badge ${tagClass(status)}">${safeStatus}</mark>`;
 }
 
 function renderStatusCell(item) {
@@ -134,6 +238,65 @@ function renderStatusCell(item) {
     return `<select class="status-select" data-id="${item.id}" aria-label="Update status">${STATUS_OPTIONS.map((status) => `<option ${status === item.status ? "selected" : ""}>${status}</option>`).join("")}</select>`;
   }
   return renderStatusBadge(item.status);
+}
+
+function isEditableReviewStatus(status) {
+  return status === "Pending" || status === "In Review";
+}
+
+function normalizeSuggestionFields(item) {
+  const approval = normalizeApprovalValue(item.approval, item.status);
+  return {
+    ...item,
+    approval,
+    status: approval === "Rejected" ? "Rejected" : normalizeStatusValue(item.status),
+    feedback: item.feedback || "",
+    rejectionReason: item.rejectionReason || ""
+  };
+}
+
+function normalizeApprovalValue(approval, status) {
+  const value = String(approval || "").trim().toLowerCase();
+  const statusValue = String(status || "").trim().toLowerCase();
+  if (value === "rejected" || statusValue === "rejected") return "Rejected";
+  if (value === "approved") return "Approved";
+  return "Pending";
+}
+
+function normalizeStatusValue(status) {
+  const value = String(status || "").trim().toLowerCase();
+  if (value === "implemented") return "Implemented";
+  if (value === "in review" || value === "in-review") return "In Review";
+  if (value === "rejected") return "Rejected";
+  return "Pending";
+}
+
+function renderDecisionCell(item) {
+  if (item.approval === "Rejected") {
+    return renderStatusBadge("Rejected");
+  }
+
+  if (item.approval === "Approved") {
+    if (isEditableReviewStatus(item.status)) {
+      return `
+        <button
+          class="status-badge status-update-button ${item.status === "In Review" ? "review-badge" : "pending-badge"}"
+          data-id="${escapeHtml(item.id)}"
+          title="Click to update status."
+          type="button"
+        >
+          ${escapeHtml(item.status || "Pending")}
+        </button>
+      `;
+    }
+    return renderStatusBadge(item.status || "Pending");
+  }
+
+  return `
+    <select class="decision-select status-select" data-id="${item.id}" aria-label="Decision">
+      ${DECISION_OPTIONS.map((decision) => `<option>${decision}</option>`).join("")}
+    </select>
+  `;
 }
 
 function createLoginModal() {
@@ -156,15 +319,14 @@ function createLoginModal() {
         required
     />
 
-</label>
-    <span>User ID</span>
+<label>
+  <span id="loginIdLabel">Employee ID</span>
 
-    <input
-        id="loginUserId"
-        autocomplete="username"
-        required
-    />
-
+  <input
+      id="loginUserId"
+      autocomplete="username"
+      required
+  />
 </label>
       <label>
         <span>Password</span>
@@ -177,6 +339,7 @@ function createLoginModal() {
     </form>
   `;
   document.body.appendChild(modal);
+  window.registerTranslatableContent?.(modal);
   modal.querySelector(".modal-cancel").addEventListener("click", () => modal.classList.add("is-hidden"));
   modal.addEventListener("click", (event) => {
     if (event.target === modal) modal.classList.add("is-hidden");
@@ -184,12 +347,174 @@ function createLoginModal() {
   modal.querySelector("form").addEventListener("submit", handleLogin);
 }
 
+function createReviewModal() {
+  if (document.querySelector("#reviewModal")) return;
+  const modal = document.createElement("div");
+  modal.id = "reviewModal";
+  modal.className = "modal hidden";
+  modal.innerHTML = `
+    <form class="modal-content" id="reviewSuggestionForm">
+      <h2>Review Suggestion</h2>
+      <div class="review-summary">
+        <label>
+          <span>Suggestion</span>
+          <output id="reviewSuggestionText">-</output>
+        </label>
+        <label>
+          <span>Employee Name</span>
+          <output id="reviewEmployeeName">-</output>
+        </label>
+        <label>
+          <span>Category</span>
+          <output id="reviewCategory">-</output>
+        </label>
+        <label>
+          <span>Priority</span>
+          <output id="reviewPriority">-</output>
+        </label>
+        <label>
+          <span>Decision</span>
+          <input id="reviewDecision" type="text" readonly />
+        </label>
+      </div>
+      <label id="reviewStatusGroup">
+        <span>Status</span>
+        <select id="reviewStatus">
+          ${REVIEW_STATUS_OPTIONS.map((status) => `<option>${status}</option>`).join("")}
+        </select>
+      </label>
+      <label id="reviewFeedbackGroup">
+        <span>Manager Feedback</span>
+        <textarea id="reviewFeedback" placeholder="Describe what action was taken..." rows="4"></textarea>
+      </label>
+      <label id="reviewReasonGroup" class="hidden">
+        <span>Rejection Reason</span>
+        <textarea id="reviewRejectionReason" placeholder="Explain why this suggestion was rejected..." rows="4"></textarea>
+      </label>
+      <div class="modal-actions">
+        <button class="ghost-button" id="cancelReviewBtn" type="button">Cancel</button>
+        <button class="primary-button" id="saveReviewBtn" type="submit">Save</button>
+      </div>
+    </form>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelector("#cancelReviewBtn").addEventListener("click", closeReviewModal);
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) closeReviewModal();
+  });
+  modal.querySelector("form").addEventListener("submit", saveReviewSuggestion);
+  modal.querySelector("#reviewStatus").addEventListener("change", (event) => {
+    event.currentTarget.classList.toggle("implemented-badge", event.currentTarget.value === "Implemented");
+  });
+}
+
+function closeReviewModal() {
+  document.querySelector("#reviewModal")?.classList.add("hidden");
+  appState.reviewSuggestion = null;
+}
+
+function openReviewModal(event) {
+  const trigger = event.currentTarget;
+  const isStatusUpdate = trigger.classList.contains("status-update-button");
+  const selectedDecision = isStatusUpdate ? "Approve" : trigger.value;
+  if (selectedDecision === "Select Decision") return;
+
+  const suggestion = appState.suggestions.find((item) => item.id === trigger.dataset.id);
+  if (!suggestion) {
+    showToast("Suggestion not found", "error");
+    if (!isStatusUpdate) {
+      trigger.value = "Select Decision";
+    }
+    return;
+  }
+
+  if (isStatusUpdate && !isEditableReviewStatus(suggestion.status)) {
+    return;
+  }
+
+  appState.reviewSuggestion = suggestion;
+  const decision = selectedDecision === "Approve" ? "Approve" : "Reject";
+  const modal = document.querySelector("#reviewModal");
+  modal.querySelector("#reviewSuggestionText").textContent = suggestion.translatedText || suggestion.originalText || "-";
+  modal.querySelector("#reviewEmployeeName").textContent = suggestion.employeeName || suggestion.employeeId || "-";
+  modal.querySelector("#reviewCategory").textContent = suggestion.category || "-";
+  modal.querySelector("#reviewPriority").innerHTML = `<mark class="tag ${tagClass(suggestion.priority)}">${escapeHtml(suggestion.priority || "-")}</mark>`;
+  modal.querySelector("#reviewDecision").value = decision;
+  modal.querySelector("#reviewStatus").value = suggestion.status || "Pending";
+  modal.querySelector("#reviewStatus").classList.toggle("implemented-badge", suggestion.status === "Implemented");
+  modal.querySelector("#reviewFeedback").value = suggestion.feedback || "";
+  modal.querySelector("#reviewRejectionReason").value = suggestion.rejectionReason || "";
+
+  const isApprove = decision === "Approve";
+  modal.querySelector("#reviewStatusGroup").classList.toggle("hidden", !isApprove);
+  modal.querySelector("#reviewFeedbackGroup").classList.toggle("hidden", !isApprove);
+  modal.querySelector("#reviewReasonGroup").classList.toggle("hidden", isApprove);
+  modal.classList.remove("hidden");
+  modal.querySelector(isApprove ? "#reviewStatus" : "#reviewRejectionReason").focus();
+  if (!isStatusUpdate) {
+    trigger.value = "Select Decision";
+  }
+}
+
+async function saveReviewSuggestion(event) {
+  event.preventDefault();
+  const suggestion = appState.reviewSuggestion;
+  if (!suggestion) return;
+
+  const modal = document.querySelector("#reviewModal");
+  const decision = modal.querySelector("#reviewDecision").value;
+  const button = modal.querySelector("#saveReviewBtn");
+  const payload = decision === "Approve"
+    ? {
+        approval: "Approved",
+        status: modal.querySelector("#reviewStatus").value,
+        feedback: modal.querySelector("#reviewFeedback").value.trim()
+      }
+    : {
+        approval: "Rejected",
+        rejectionReason: modal.querySelector("#reviewRejectionReason").value.trim()
+      };
+
+  setLoading(button, true, "Saving...");
+  try {
+    await request(`/review-suggestion/${suggestion.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const updatedSuggestion = normalizeSuggestionFields({
+      ...suggestion,
+      ...payload,
+      managerUpdatedAt: new Date().toISOString()
+    });
+    appState.suggestions = appState.suggestions.map((item) => (
+      item.id === updatedSuggestion.id ? updatedSuggestion : item
+    ));
+    closeReviewModal();
+    refreshManagerRow(updatedSuggestion);
+    window.localStorage.setItem("qualiflow-suggestions-updated", String(Date.now()));
+    showToast("Review saved");
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    setLoading(button, false);
+  }
+}
+
 function openLogin(role) {
   appState.loginRole = role;
-  document.querySelector("#loginRoleLabel").textContent = role === "manager" ? "Manager access" : "Employee access";
+
+  document.querySelector("#loginRoleLabel").textContent =
+    role === "manager" ? "Manager access" : "Employee access";
+
+  document.querySelector("#loginIdLabel").textContent =
+    role === "manager" ? "Manager ID" : "Employee ID";
+  window.registerTranslatableContent?.(document.querySelector(".login-modal"));
+
   document.querySelector("#loginCompany").value = "";
   document.querySelector("#loginUserId").value = "";
   document.querySelector("#loginPassword").value = "";
+
   document.querySelector(".login-modal").classList.remove("is-hidden");
   document.querySelector("#loginUserId").focus();
 }
@@ -270,7 +595,7 @@ async function handleLogin(event) {
         password: document.querySelector("#loginPassword").value
       })
     });
-    if (user.role !== appState.loginRole) throw new Error(`This account is registered as ${user.role}`);
+    if (user.role !== appState.loginRole) throw new Error(`${translateUiText("This account is registered as")} ${user.role}`);
     appState.user = {
       company: user.company,
       userId: user.userId,
@@ -280,7 +605,7 @@ async function handleLogin(event) {
     localStorage.setItem("qualiflow-user", JSON.stringify(appState.user));
     document.querySelector(".login-modal").classList.add("is-hidden");
     await enterDashboard(appState.user);
-    showToast(`Welcome ${appState.user.name || getUserId(appState.user)}`);
+    showToast(`${translateUiText("Welcome")} ${appState.user.name || getUserId(appState.user)}`);
   } catch (error) {
     showToast(error.message, "error");
   } finally {
@@ -289,6 +614,11 @@ async function handleLogin(event) {
 }
 
 async function enterDashboard(user) {
+  const welcome = document.querySelector("#employeeWelcomeName");
+
+  if (welcome) {
+    welcome.textContent = user.name || user.userId;
+}
   startDashboardAutoRefresh();
   if (user.role === "manager") {
     showOnly(document.querySelector("#managerDashboard"));
@@ -320,7 +650,6 @@ function buildRecorderUi() {
   document.querySelector("#pauseRecording").addEventListener("click", pauseRecording);
   document.querySelector("#resumeRecording").addEventListener("click", resumeRecording);
   document.querySelector("#stopRecording").addEventListener("click", stopRecording);
-  document.querySelector("#recordButton")?.addEventListener("click", startRecording, true);
   submitButton.addEventListener("click", submitSuggestion);
 }
 
@@ -412,11 +741,12 @@ async function submitSuggestion(event) {
 
   try {
     const { suggestion } = await request("/submit-suggestion", { method: "POST", body: formData });
-    renderEmployeeAnalysis(suggestion);
+    const normalizedSuggestion = normalizeSuggestionFields(suggestion);
+    renderEmployeeAnalysis(normalizedSuggestion);
     appState.suggestions = [
-      suggestion,
+      normalizedSuggestion,
       ...appState.suggestions.filter(
-        (item) => item.id !== suggestion.id
+        (item) => item.id !== normalizedSuggestion.id
       )
     ];
 
@@ -486,25 +816,179 @@ async function loadEmployeeSuggestions() {
     `/employee-suggestions/${company}/${encodeURIComponent(employeeId)}`
 );
 
-  appState.suggestions = suggestions;
+  const previousSuggestions = appState.suggestions;
+  appState.suggestions = suggestions.map(normalizeSuggestionFields);
 
+  notifyEmployeeReviews(appState.suggestions, previousSuggestions);
   renderEmployeeTable(appState.suggestions);
 }
 
-function renderEmployeeTable(suggestions) {
-  const table = document.querySelector(".mini-table");
-  table.innerHTML = `
-    <div class="mini-row mini-head"><span>Suggestion</span><span>Category</span><span>Priority</span><span>Status</span><span>Date</span></div>
-    ${suggestions.map((item) => `
-      <div class="mini-row">
-        <span>${item.translatedText || "-"}</span>
-        <span>${item.category || "-"}</span>
-        <span>${item.priority || "-"}</span>
-        <span>${renderStatusBadge(item.status)}</span>
-        <span>${formatDate(item.timestamp)}</span>
+function employeeNotificationStorageKey(name) {
+  const company = appState.user?.company || "company";
+  const employeeId = getUserId() || "employee";
+  return `qualiflow-${name}-${company}-${employeeId}`;
+}
+
+function getStoredReviewKeys(name) {
+  try {
+    return JSON.parse(localStorage.getItem(employeeNotificationStorageKey(name)) || "[]");
+  } catch (error) {
+    return [];
+  }
+}
+
+function setStoredReviewKeys(name, keys) {
+  localStorage.setItem(employeeNotificationStorageKey(name), JSON.stringify([...new Set(keys)]));
+}
+
+function reviewNotificationKey(item) {
+  return `${item.id}:${item.approval}:${item.managerUpdatedAt || ""}`;
+}
+
+function getReviewMessage(item) {
+  if (item.approval === "Approved") {
+    return "Your suggestion has been approved.";
+  }
+  if (item.approval === "Rejected") {
+    return `Your suggestion has been rejected.${item.rejectionReason ? ` Reason: ${item.rejectionReason}` : ""}`;
+  }
+  return "";
+}
+
+function notifyEmployeeReviews(suggestions, previousSuggestions = []) {
+  const previousById = new Map(previousSuggestions.map((item) => [item.id, item]));
+  const seen = getStoredReviewKeys("seen-reviews");
+  let changed = false;
+
+  suggestions.forEach((item) => {
+    if (!["Approved", "Rejected"].includes(item.approval) || !item.managerUpdatedAt) return;
+    const key = reviewNotificationKey(item);
+    const previous = previousById.get(item.id);
+    const changedInRefresh = previous && (
+      previous.approval !== item.approval ||
+      previous.managerUpdatedAt !== item.managerUpdatedAt
+    );
+
+    if (!seen.includes(key) && (changedInRefresh || previousSuggestions.length === 0)) {
+      showToast(getReviewMessage(item), item.approval === "Rejected" ? "error" : "success");
+      seen.push(key);
+      changed = true;
+    }
+  });
+
+  if (changed) setStoredReviewKeys("seen-reviews", seen);
+}
+
+function renderEmployeeNotifications(suggestions) {
+  //Notifications removed intentionally.
+}
+
+function getProgressTimelineStage(item) {
+  const normalizedItem = normalizeSuggestionFields(item);
+  if (normalizedItem.approval === "Rejected" || normalizedItem.status === "Rejected") {
+    return "Rejected";
+  }
+  if (normalizedItem.status === "Implemented") {
+    return "Implemented";
+  }
+  if (normalizedItem.status === "In Review") {
+    return "In Review";
+  }
+  return "Pending";
+}
+
+function renderProgressTimeline(item) {
+  const normalizedItem = normalizeSuggestionFields(item);
+  const currentStage = getProgressTimelineStage(normalizedItem);
+
+  if (currentStage === "Rejected") {
+    return `
+      <div class="progress-timeline rejected-timeline" aria-label="${escapeHtml(`${translateUiText("Suggestion progress")}: ${translateUiText("Rejected")}`)}">
+        ${["Submitted", "Rejected"].map((stage, index) => `
+          <div class="progress-step ${index === 0 ? "is-complete" : "is-rejected"}">
+            <span class="progress-dot" aria-hidden="true"></span>
+            <span class="progress-label">${escapeHtml(translateUiText(stage))}</span>
+            ${index === 0 ? `<span class="progress-connector is-rejected" aria-hidden="true"></span>` : ""}
+          </div>
+        `).join("")}
       </div>
-    `).join("") || `<div class="mini-row empty-row"><span>No suggestions submitted yet</span><span></span><span></span><span></span><span></span></div>`}
+    `;
+}
+
+  const stages = ["Submitted", "Pending", "In Review", "Implemented"];
+  const currentIndex = stages.indexOf(currentStage);
+  return `
+    <div class="progress-timeline" aria-label="${escapeHtml(`${translateUiText("Suggestion progress")}: ${translateUiText(currentStage)}`)}">
+      ${stages.map((stage, index) => {
+        const isComplete = currentStage === "Implemented" || index < currentIndex;
+        const isCurrent = currentStage !== "Implemented" && index === currentIndex;
+        const stepClass = isComplete ? "is-complete" : isCurrent ? "is-current" : "is-future";
+        const connectorClass = index < currentIndex ? "is-complete" : "";
+        return `
+          <div class="progress-step ${stepClass}">
+            <span class="progress-dot" aria-hidden="true"></span>
+            <span class="progress-label">${escapeHtml(translateUiText(stage))}</span>
+            ${index < stages.length - 1 ? `<span class="progress-connector ${connectorClass}" aria-hidden="true"></span>` : ""}
+          </div>
+        `;
+      }).join("")}
+    </div>
   `;
+}
+
+async function renderEmployeeTable(suggestions) {
+  const selectedLanguage = languageSelect?.value || "en";
+
+  const table = document.querySelector(".mini-table");
+  if (!table) return;
+  const language = getSelectedLanguage();
+  const renderToken = ++appState.employeeRenderToken;
+  renderEmployeeNotifications(suggestions);
+  table.innerHTML = `
+    <div class="mini-row mini-head"><span>${escapeHtml(translateUiText("Suggestion"))}</span><span>${escapeHtml(translateUiText("Category"))}</span><span>${escapeHtml(translateUiText("Priority"))}</span><span>${escapeHtml(translateUiText("Approval"))}</span><span>${escapeHtml(translateUiText("Status"))}</span><span>${escapeHtml(translateUiText("Manager Feedback / Rejection Reason"))}</span></div>
+    ${suggestions.map((rawItem) => {
+      const item = normalizeSuggestionFields(rawItem);
+      const isRejected = item.approval === "Rejected" || item.status === "Rejected";
+      const suggestionText = item.translatedText || item.originalText || "-";
+      const feedbackText = isRejected ? item.rejectionReason || "-" : item.feedback || "-";
+      return `
+        <div class="mini-row">
+          <span>${escapeHtml(
+    getCachedDisplayText(suggestionText, language)
+)}</span>
+          <span>${escapeHtml(
+    translateUiText(item.category || "-")
+)}</span>
+          <span>${escapeHtml(
+    translateUiText(item.priority || "-")
+)}</span>
+          <span>${renderStatusBadge(item.approval || "Pending")}</span>
+          <span>${isRejected ? "" : renderStatusBadge(item.status || "Pending")}</span>
+          <span>${
+    escapeHtml(getCachedDisplayText(feedbackText, language))
+}</span>
+          <div class="mini-row-detail">${renderProgressTimeline(item)}</div>
+        </div>
+      `;
+    }).join("") || `<div class="mini-row empty-row"><span>${escapeHtml(translateUiText("No suggestions submitted yet"))}</span><span></span><span></span><span></span><span></span><span></span></div>`}
+  `;
+
+  const dynamicTexts = suggestions.flatMap((rawItem) => {
+    const item = normalizeSuggestionFields(rawItem);
+    const isRejected = item.approval === "Rejected" || item.status === "Rejected";
+    return [
+      item.translatedText || item.originalText || "",
+      isRejected ? item.rejectionReason || "" : item.feedback || ""
+    ];
+  });
+
+  loadDisplayTranslations(dynamicTexts, language)
+    .then((loadedTranslations) => {
+      if (loadedTranslations && renderToken === appState.employeeRenderToken && language === getSelectedLanguage()) {
+        renderEmployeeTable(appState.suggestions);
+      }
+    })
+    .catch(() => {});
 }
 
 async function loadManagerDashboard() {
@@ -522,7 +1006,7 @@ async function loadManagerDashboard() {
 
     ]);
 
-    appState.suggestions = suggestions;
+    appState.suggestions = suggestions.map(normalizeSuggestionFields);
 
     renderManagerTable();
 
@@ -553,22 +1037,64 @@ function renderManagerTable() {
   table.innerHTML = `
     <div class="table-row table-head" role="row">
       <span role="columnheader">Employee ID</span><span role="columnheader">Suggestion</span><span role="columnheader">Category</span>
-      <span role="columnheader">Priority</span><span role="columnheader">Status</span><span role="columnheader">Timestamp</span><span role="columnheader">Action</span>
+      <span role="columnheader">Priority</span><span role="columnheader">Decision</span><span role="columnheader">Timestamp</span>
     </div>
-    ${suggestions.map((item) => `
-      <div class="table-row" role="row">
-        <span role="cell">${item.employeeId || "-"}</span>
-        <span role="cell">${item.translatedText || "-"}</span>
-        <span role="cell">${item.category || "-"}</span>
-        <span role="cell"><mark class="tag ${tagClass(item.priority)}">${item.priority || "-"}</mark></span>
-        <span role="cell">${renderStatusCell(item)}</span>
-        <span role="cell">${formatDate(item.timestamp)}</span>
-        <span role="cell"><button class="danger-button compact delete-suggestion" data-id="${item.id}" type="button">Delete</button></span>
-      </div>
-    `).join("") || `<div class="table-row empty-row" role="row"><span role="cell">No suggestions submitted yet</span><span></span><span></span><span></span><span></span><span></span><span></span></div>`}
+    ${suggestions.map(renderManagerRow).join("") || renderEmptyManagerRow()}
   `;
-  table.querySelectorAll(".status-select").forEach((select) => select.addEventListener("change", updateStatus));
-  table.querySelectorAll(".delete-suggestion").forEach((button) => button.addEventListener("click", deleteSuggestion));
+  bindManagerReviewControls(table);
+  renderCriticalList(appState.suggestions);
+}
+
+function renderManagerRow(item) {
+  return `
+    <div class="table-row" data-id="${escapeHtml(item.id)}" role="row">
+      <span role="cell">${escapeHtml(item.employeeId || "-")}</span>
+      <span role="cell">${escapeHtml(item.translatedText || item.originalText || "-")}</span>
+      <span role="cell">${escapeHtml(item.category || "-")}</span>
+      <span role="cell"><mark class="tag ${tagClass(item.priority)}">${escapeHtml(item.priority || "-")}</mark></span>
+      <span role="cell">${renderDecisionCell(item)}</span>
+      <span role="cell">${formatDate(item.timestamp)}</span>
+    </div>
+  `;
+}
+
+function renderEmptyManagerRow() {
+  return `<div class="table-row empty-row" role="row"><span role="cell">No suggestions submitted yet</span><span></span><span></span><span></span><span></span><span></span></div>`;
+}
+
+function bindManagerReviewControls(scope = document) {
+  scope.querySelectorAll(".decision-select").forEach((select) => {
+    select.addEventListener("change", openReviewModal);
+  });
+  scope.querySelectorAll(".status-update-button").forEach((button) => {
+    button.addEventListener("click", openReviewModal);
+  });
+}
+
+function refreshManagerRow(item) {
+  const table = document.querySelector(".suggestion-table");
+  const currentRow = [...(table?.querySelectorAll(".table-row[data-id]") || [])]
+    .find((row) => row.dataset.id === item.id);
+  if (!table || !currentRow) {
+    return;
+  }
+
+  const isStillVisible = getFilteredSuggestions().some((suggestion) => suggestion.id === item.id);
+  if (!isStillVisible) {
+    currentRow.remove();
+    if (!table.querySelector(".table-row:not(.table-head)")) {
+      table.insertAdjacentHTML("beforeend", renderEmptyManagerRow());
+    }
+    renderCriticalList(appState.suggestions);
+    return;
+  }
+
+  currentRow.outerHTML = renderManagerRow(item);
+  const newRow = [...table.querySelectorAll(".table-row[data-id]")]
+    .find((row) => row.dataset.id === item.id);
+  if (newRow) {
+    bindManagerReviewControls(newRow);
+  }
   renderCriticalList(appState.suggestions);
 }
 
@@ -618,24 +1144,30 @@ async function deleteSuggestion(event) {
 
 function renderAnalytics(analytics) {
   const stripValues = document.querySelectorAll(".operation-strip strong");
-  stripValues[1].textContent = analytics.today;
-  stripValues[2].textContent = analytics.pending;
-  stripValues[3].textContent = analytics.critical;
+  if (stripValues[1]) stripValues[1].textContent = analytics.today;
+  if (stripValues[2]) stripValues[2].textContent = analytics.pending;
+  if (stripValues[3]) stripValues[3].textContent = analytics.critical;
   const kpis = document.querySelectorAll(".kpi-card strong");
-  kpis[0].textContent = analytics.total;
-  kpis[1].textContent = analytics.pending;
-  kpis[2].textContent = analytics.implemented;
-  kpis[3].textContent = analytics.categoryDistribution.Safety || 0;
-  const categoryTotal = Object.values(analytics.categoryDistribution).reduce((sum, value) => sum + value, 0) || 1;
-  document.querySelector(".chart-legend").innerHTML = CATEGORY_OPTIONS.map((category) => {
-    const count = analytics.categoryDistribution[category] || 0;
-    return `<span><i class="legend ${tagClass(category)}"></i>${category} ${Math.round((count / categoryTotal) * 100)}%</span>`;
-  }).join("");
-  const priorityMax = Math.max(...Object.values(analytics.priorityDistribution), 1);
-  document.querySelector(".priority-bars").innerHTML = PRIORITY_OPTIONS.map((priority) => {
-    const count = analytics.priorityDistribution[priority] || 0;
-    return `<div><span>${priority}</span><strong>${count}</strong><progress value="${count}" max="${priorityMax}"></progress></div>`;
-  }).join("");
+  if (kpis[0]) kpis[0].textContent = analytics.total;
+  if (kpis[1]) kpis[1].textContent = analytics.pending;
+  if (kpis[2]) kpis[2].textContent = analytics.implemented;
+  if (kpis[3]) kpis[3].textContent = analytics.categoryDistribution.Safety || 0;
+  const chartLegend = document.querySelector(".chart-legend");
+  if (chartLegend) {
+    const categoryTotal = Object.values(analytics.categoryDistribution).reduce((sum, value) => sum + value, 0) || 1;
+    chartLegend.innerHTML = CATEGORY_OPTIONS.map((category) => {
+      const count = analytics.categoryDistribution[category] || 0;
+      return `<span><i class="legend ${tagClass(category)}"></i>${category} ${Math.round((count / categoryTotal) * 100)}%</span>`;
+    }).join("");
+  }
+  const priorityBars = document.querySelector(".priority-bars");
+  if (priorityBars) {
+    const priorityMax = Math.max(...Object.values(analytics.priorityDistribution), 1);
+    priorityBars.innerHTML = PRIORITY_OPTIONS.map((priority) => {
+      const count = analytics.priorityDistribution[priority] || 0;
+      return `<div><span>${priority}</span><strong>${count}</strong><progress value="${count}" max="${priorityMax}"></progress></div>`;
+    }).join("");
+  }
 }
 
 function setupManagerFilters() {
@@ -684,6 +1216,7 @@ function restoreSession() {
 
 function init() {
   createLoginModal();
+  createReviewModal();
   buildRecorderUi();
   setupManagerFilters();
   setupExport();
@@ -715,6 +1248,11 @@ function init() {
   window.addEventListener("storage", (event) => {
     if (event.key === "qualiflow-suggestions-updated") {
       refreshCurrentDashboard().catch(() => {});
+    }
+  });
+  window.addEventListener("app-language-changed", () => {
+    if (appState.user?.role === "employee" && isEmployeeVisible()) {
+      renderEmployeeTable(appState.suggestions);
     }
   });
   restoreSession();

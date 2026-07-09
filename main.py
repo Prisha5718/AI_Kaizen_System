@@ -1,7 +1,12 @@
+
 from email.mime import audio
 import os
 import tempfile
 import traceback
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
@@ -15,9 +20,11 @@ from firebase_ops import (
     get_suggestion,
     list_company_suggestions,
     list_employee_suggestions,
+    update_suggestion_review,
     update_suggestion_status,
 )
 from speech_processing import process_audio
+from translator_helper import translate_from_english
 
 
 app = Flask(__name__, static_folder="frontend", static_url_path="")
@@ -189,6 +196,29 @@ def update_status(suggestion_id):
     return json_response({"suggestion": suggestion})
 
 
+@app.route("/review-suggestion/<suggestion_id>", methods=["PUT", "OPTIONS"])
+def review_suggestion(suggestion_id):
+    if request.method == "OPTIONS":
+        return json_response({})
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        suggestion = update_suggestion_review(
+            suggestion_id,
+            payload.get("approval"),
+            payload.get("status"),
+            payload.get("feedback") or "",
+            payload.get("rejectionReason") or "",
+        )
+    except ValueError as exc:
+        return json_response({"error": str(exc)}, 400)
+
+    if not suggestion:
+        return json_response({"error": "Suggestion not found"}, 404)
+
+    return json_response({"suggestion": suggestion})
+
+
 @app.route("/delete-suggestion/<suggestion_id>", methods=["DELETE", "OPTIONS"])
 def delete_status(suggestion_id):
     if request.method == "OPTIONS":
@@ -213,6 +243,40 @@ def suggestion(suggestion_id):
     if not item:
         return json_response({"error": "Suggestion not found"}, 404)
     return json_response({"suggestion": item})
+
+
+@app.route("/translate-display", methods=["POST", "OPTIONS"])
+def translate_display():
+    if request.method == "OPTIONS":
+        return json_response({})
+
+    payload = request.get_json(silent=True) or {}
+    target_language = (payload.get("targetLanguage") or "en").strip().lower()
+    texts = payload.get("texts") or []
+
+    if not isinstance(texts, list):
+        return json_response({"error": "texts must be a list"}, 400)
+
+    unique_texts = []
+    seen = set()
+    for value in texts:
+        text = str(value or "").strip()
+        if not text or text == "-" or text in seen:
+            continue
+        seen.add(text)
+        unique_texts.append(text)
+
+    if target_language == "en":
+        return json_response({"translations": {text: text for text in unique_texts}})
+
+    translations = {}
+    for text in unique_texts:
+        try:
+            translations[text] = translate_from_english(text, target_language)
+        except Exception:
+            translations[text] = text
+
+    return json_response({"translations": translations})
 
 
 if __name__ == "__main__":
