@@ -15,6 +15,7 @@ from analytics import build_analytics
 from authentication import login_user
 from firebase_ops import (
     create_employee_user,
+    create_manager_user,
     create_suggestion,
     delete_suggestion,
     get_suggestion,
@@ -111,6 +112,49 @@ def signup():
         return json_response({"error": str(exc)}, status)
 
     return json_response({"user": user, "message": "Account created successfully. Please login."}, 201)
+
+@app.route("/manager-signup", methods=["POST", "OPTIONS"])
+def manager_signup():
+    if request.method == "OPTIONS":
+        return json_response({})
+
+    payload = request.get_json(silent=True) or {}
+
+    company = (payload.get("company") or "").strip()
+    user_id = (payload.get("userId") or "").strip()
+    name = (payload.get("name") or "").strip()
+    password = payload.get("password") or ""
+    confirm_password = payload.get("confirmPassword") or ""
+    admin_key = payload.get("adminKey") or ""
+
+    if not company or not user_id or not name or not password or not confirm_password or not admin_key:
+        return json_response({"error": "All fields are required"}, 400)
+
+    if password != confirm_password:
+        return json_response({"error": "Passwords do not match"}, 400)
+    
+    
+
+    print("Received :", repr(admin_key))
+    print("Expected :", repr(os.environ.get("ADMIN_REGISTRATION_KEY")))
+
+    if admin_key != os.environ.get("ADMIN_REGISTRATION_KEY"):
+        return json_response({"error": "Invalid Admin Registration Key"}, 403)
+        return json_response({"error": "Invalid Admin Registration Key"}, 403)
+
+    try:
+        user = create_manager_user(company, user_id, name, password)
+    except ValueError as exc:
+        status = 409 if "already exists" in str(exc) else 400
+        return json_response({"error": str(exc)}, status)
+
+    return json_response(
+        {
+            "user": user,
+            "message": "Manager account created successfully."
+        },
+        201,
+    )
 
 
 @app.route("/submit-suggestion", methods=["POST", "OPTIONS"])

@@ -152,10 +152,11 @@ function setLoading(element, isLoading, label = "Loading...") {
 }
 
 function showOnly(view) {
-  ["landingView", "managerDashboard", "employeeDashboard"].forEach((id) => {
+  ["landingView", "managerSignupView", "managerDashboard", "employeeDashboard"].forEach((id) => {
     document.querySelector(`#${id}`)?.classList.add("is-hidden");
   });
   view.classList.remove("is-hidden");
+  window.scrollTo({ top: 0, behavior: "auto" });
 }
 
 function formatDate(value) {
@@ -530,6 +531,68 @@ function closeSignupModal() {
   document.querySelector("#signupModal")?.classList.add("hidden");
 }
 
+function setManagerSignupMessage(message = "", type = "success") {
+  const messageElement = document.querySelector("#managerSignupMessage");
+  if (!messageElement) return;
+  messageElement.textContent = message;
+  messageElement.classList.toggle("hidden", !message);
+  messageElement.classList.toggle("is-error", type === "error");
+}
+
+function resetManagerSignupForm() {
+  [
+    "managerSignupCompany",
+    "managerSignupName",
+    "managerSignupUserId",
+    "managerSignupPassword",
+    "managerSignupConfirmPassword",
+    "managerSignupAdminKey"
+  ].forEach((id) => {
+    const field = document.querySelector(`#${id}`);
+    if (field) field.value = "";
+  });
+  setManagerSignupMessage();
+}
+
+async function handleManagerSignup(event) {
+  event.preventDefault();
+
+  const button = document.querySelector("#managerSignupSubmitBtn");
+  const company = document.querySelector("#managerSignupCompany")?.value.trim() || "";
+  const name = document.querySelector("#managerSignupName")?.value.trim() || "";
+  const userId = document.querySelector("#managerSignupUserId")?.value.trim() || "";
+  const password = document.querySelector("#managerSignupPassword")?.value || "";
+  const confirmPassword = document.querySelector("#managerSignupConfirmPassword")?.value || "";
+  const adminKey = document.querySelector("#managerSignupAdminKey")?.value || "";
+
+  setManagerSignupMessage();
+  setLoading(button, true, "Creating...");
+  try {
+    await request("/manager-signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        company,
+        userId,
+        name,
+        password,
+        confirmPassword,
+        adminKey
+      })
+    });
+
+    setManagerSignupMessage("Manager account created successfully.");
+    window.setTimeout(() => {
+      resetManagerSignupForm();
+      showOnly(document.querySelector("#landingView"));
+    }, 2000);
+  } catch (error) {
+    setManagerSignupMessage(error.message, "error");
+  } finally {
+    setLoading(button, false);
+  }
+}
+
 async function handleSignup() {
   const button = document.querySelector("#createAccountBtn");
   const company = document.querySelector("#signupCompany")?.value.trim() || "";
@@ -638,10 +701,10 @@ function buildRecorderUi() {
   panel.innerHTML = `
     <div class="recorder-status"><i></i><strong id="recordingState">Ready</strong><span id="recordingTimer">00:00</span></div>
     <div class="recorder-controls">
-      <button class="secondary-button compact" id="startRecording" type="button">Record</button>
-      <button class="secondary-button compact" id="pauseRecording" type="button" disabled>Pause</button>
-      <button class="secondary-button compact" id="resumeRecording" type="button" disabled>Resume</button>
-      <button class="secondary-button compact" id="stopRecording" type="button" disabled>Stop</button>
+      <button class="secondary-button compact" id="startRecording" type="button">🔴 Record</button>
+      <button class="secondary-button compact" id="pauseRecording" type="button" disabled>⏸️ Pause</button>
+      <button class="secondary-button compact" id="resumeRecording" type="button" disabled>▶️ Resume</button>
+      <button class="secondary-button compact" id="stopRecording" type="button" disabled>⏹️ Stop</button>
     </div>
     <audio id="recordingPlayback" controls></audio>
   `;
@@ -1232,6 +1295,8 @@ function init() {
   }, true);
   document.querySelector("#createAccountBtn")?.addEventListener("click", handleSignup);
   document.querySelector("#cancelSignupBtn")?.addEventListener("click", resetSignupForm);
+  document.querySelector("#managerSignupForm")?.addEventListener("submit", handleManagerSignup);
+  document.querySelector("#managerSignupBackBtn")?.addEventListener("click", resetManagerSignupForm);
   document.querySelector("#signupModal")?.addEventListener("click", (event) => {
     if (event.target.id === "signupModal") {
       closeSignupModal();

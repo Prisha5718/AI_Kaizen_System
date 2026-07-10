@@ -290,6 +290,79 @@ h1 {
   width: min(454px, 100%);
   margin-top: 16px;
 }
+
+.manager-onboarding-link {
+  width: min(454px, 100%);
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 0.94rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.text-link {
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  padding: 0;
+}
+
+.text-link:hover,
+.text-link:focus-visible {
+  color: var(--primary-strong);
+}
+
+.signup-page-shell {
+  display: grid;
+  place-items: center;
+  max-width: 1180px;
+  min-height: calc(100vh - 120px);
+  margin: 0 auto;
+  padding: 34px 0;
+}
+
+.signup-page-card {
+  display: grid;
+  gap: 16px;
+  width: min(560px, 100%);
+}
+
+.signup-page-card h2 {
+  margin-bottom: 8px;
+  font-size: clamp(2rem, 4vw, 3rem);
+  letter-spacing: 0;
+}
+
+.signup-page-actions {
+  display: grid;
+  grid-template-columns: 0.7fr 1fr;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.signup-page-actions .ghost-button,
+.signup-page-actions .primary-button {
+  position: static;
+  width: 100%;
+}
+
+.form-message {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: rgba(47, 143, 107, 0.12);
+  color: var(--success);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.form-message.is-error {
+  background: rgba(194, 65, 59, 0.12);
+  color: var(--danger);
+}
 .secondary-button:hover,
 .ghost-button:hover,
 .danger-button:hover {
@@ -1096,6 +1169,10 @@ progress::-moz-progress-bar {
   .role-actions,
   .role-button {
     width: 100%;
+  }
+
+  .signup-page-actions {
+    grid-template-columns: 1fr;
   }
 
   .operation-strip div {

@@ -205,6 +205,44 @@ def create_employee_user(company, user_id, name, password):
         "role": user["role"],
     }
 
+def create_manager_user(company, user_id, name, password):
+    seed_default_users()
+
+    if not company or not user_id or not name or not password:
+        raise ValueError("Company, manager ID, manager name, and password are required")
+
+    normalized_company = normalize_identifier(company)
+    normalized_user_id = normalize_identifier(user_id)
+
+    document_id = user_document_id(normalized_company, normalized_user_id)
+
+    ref = db.collection("users").document(document_id)
+
+    duplicate_exists = ref.get().exists or any(
+        identifiers_match((candidate.to_dict() or {}).get("company"), normalized_company)
+        and identifiers_match((candidate.to_dict() or {}).get("userId"), normalized_user_id)
+        for candidate in db.collection("users").stream()
+    )
+
+    if duplicate_exists:
+        raise ValueError("Manager already exists for this company")
+
+    user = {
+        "company": normalized_company,
+        "userId": normalized_user_id,
+        "name": name.strip(),
+        "password": password,
+        "role": "manager",
+    }
+
+    ref.set(user)
+
+    return {
+        "company": user["company"],
+        "userId": user["userId"],
+        "name": user["name"],
+        "role": user["role"],
+    }
 
 def create_suggestion(data):
     missing = [field for field in REQUIRED_SUGGESTION_FIELDS if not data.get(field)]

@@ -1,8 +1,10 @@
 const landingView = document.querySelector("#landingView");
+const managerSignupView = document.querySelector("#managerSignupView");
 const managerDashboard = document.querySelector("#managerDashboard");
 const employeeDashboard = document.querySelector("#employeeDashboard");
 const managerLogin = document.querySelector("#managerLogin");
 const employeeLogin = document.querySelector("#employeeLogin");
+const managerSignupLink = document.querySelector("#managerSignupLink");
 const backButtons = document.querySelectorAll("[data-view='landing']");
 const recognizedText = document.querySelector("#recognizedText");
 const languageSelect = document.querySelector("#languageSelect");
@@ -943,6 +945,7 @@ window.registerTranslatableContent = (root) => {
 
 function showView(view) {
   landingView.classList.add("is-hidden");
+  managerSignupView?.classList.add("is-hidden");
   managerDashboard.classList.add("is-hidden");
   employeeDashboard.classList.add("is-hidden");
 
@@ -1085,6 +1088,7 @@ function downloadSuggestionsReport() {
 
 managerLogin.addEventListener("click", () => showView(managerDashboard));
 employeeLogin.addEventListener("click", () => showView(employeeDashboard));
+managerSignupLink?.addEventListener("click", () => showView(managerSignupView));
 
 backButtons.forEach((button) => {
   button.addEventListener("click", () => showView(landingView));
